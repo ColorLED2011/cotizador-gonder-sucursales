@@ -3,7 +3,7 @@ import xmlrpc.client
 import requests
 from flask import Flask, render_template, request, jsonify
 
-app = Flash(__name__)
+app = Flask(__name__)
 
 # ── Odoo config ──────────────────────────────────────────────────────────────
 ODOO_URL      = os.environ.get("ODOO_URL", "https://gonder.odoo.com")
@@ -430,3 +430,29 @@ def _send_telegram(vendedor, cliente, pricelist, lines, order_name):
         f"👤 Vendedor: {vendedor}",
         f"🏢 Cliente: {cliente}",
         f"💲 Tarifa: {pricelist}",
+        "",
+        "*Productos:*",
+    ]
+    for l in lines:
+        msg_lines.append(
+            f"  • [{l['code']}] {l['name']} — x{l['qty']} @ {l['price']:.2f}"
+        )
+    msg_lines.append(f"\n💰 *Total estimado: {total:.2f}*")
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": "\n".join(msg_lines),
+                "parse_mode": "Markdown",
+            },
+            timeout=5,
+        )
+    except Exception:
+        pass  # No interrumpir el flujo si falla Telegram
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
