@@ -71,9 +71,10 @@ def apply_price_rule(item, list_price):
     if cp == "fixed":
         return item["fixed_price"]
     elif cp == "percentage":
-        return list_price * (1 - item["percent_price"] / 100)
+        return list_price * (1 - item.get("percent_price", 0) / 100)
     elif cp == "formula":
-        return (list_price - item.get("price_discount", 0)) * (1 - item.get("price_surcharge", 0) / 100)
+        # Odoo formula: base_price * (1 - price_discount%) + price_surcharge
+        return list_price * (1 - item.get("price_discount", 0) / 100) + item.get("price_surcharge", 0)
     return list_price
 
 
