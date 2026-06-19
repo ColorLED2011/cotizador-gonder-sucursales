@@ -153,6 +153,47 @@ def list_pricelists():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/debug_price")
+def debug_price():
+    """Debug: muestra los pricelist items encontrados para un producto."""
+    code = request.args.get("code", "").strip().upper()
+    if not code:
+        return jsonify({"ok": False, "error": "code requerido"}), 400
+    try:
+        uid, models = get_odoo()
+        variants = call(models, uid, "product.product", "search_read",
+            [[["default_code", "=", code]]],
+            {"fields": ["id", "name", "list_price", "product_tmpl_id"], "limit": 1})
+        if not variants:
+            return jsonify({"ok": False, "error": "Producto no encontrado"})
+        p = variants[0]
+        tmpl_id = p["product_tmpl_id"][0] if isinstance(p["product_tmpl_id"], list) else p["product_tmpl_id"]
+
+        # Buscar tarifas
+        pricelists = call(models, uid, "product.pricelist", "search_read",
+            [[]], {"fields": ["id", "name"]})
+
+        result = {"product": p, "tmpl_id": tmpl_id, "pricelists": pricelists, "items": {}}
+        for pl in pricelists:
+            items = call(models, uid, "product.pricelist.item", "search_read",
+                [[["pricelist_id", "=", pl["id"]]]],
+                {"fields": ["applied_on", "product_id", "product_tmpl_id",
+                            "compute_price", "fixed_price", "percent_price",
+                            "price_discount", "price_surcharge"]})
+            # Filter relevant ones
+            relevant = [i for i in items if (
+                (i["applied_on"] == "0_product_variant" and i.get("product_id") and
+                 (i["product_id"][0] if isinstance(i["product_id"], list) else i["product_id"]) == p["id"]) or
+                (i["applied_on"] == "1_product" and i.get("product_tmpl_id") and
+                 (i["product_tmpl_id"][0] if isinstance(i["product_tmpl_id"], list) else i["product_tmpl_id"]) == tmpl_id) or
+                i["applied_on"] == "3_global"
+            )]
+            result["items"][pl["name"]] = relevant
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/search_product")
 def search_product():
     """Busca un producto por codigo y devuelve precio para la tarifa solicitada."""
