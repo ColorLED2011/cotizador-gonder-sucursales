@@ -92,10 +92,31 @@
       color: #fff;
     }
 
-    /* ── Product add row ── */
-    .add-product-row { display: flex; gap: 8px; align-items: flex-end; }
-    .add-product-row .form-group { flex: 2; margin-bottom: 0; }
-    .add-product-row .qty-group { flex: .6; margin-bottom: 0; }
+    /* ── Product add row (inline in table) ── */
+    .add-row { background: #fafbfc; }
+    .add-row td { padding: 8px 6px; vertical-align: middle; border-bottom: none !important; }
+    .add-row-code {
+      width: 95px; border: 2px solid var(--accent) !important;
+      border-radius: 6px; padding: 6px 8px; font-size: .85rem; text-transform: uppercase;
+    }
+    .add-row-code:focus { outline: none; border-color: var(--primary) !important; }
+    .add-row-qty {
+      width: 58px; border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 6px; font-size: .85rem;
+    }
+    .btn-pkg {
+      padding: 6px 10px; font-size: 1.05rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); cursor: pointer; line-height: 1;
+    }
+    .btn-pkg:hover { background: #e8e8e8; }
+    .pl-col-sub { font-size: .68rem; font-weight: 400; color: var(--muted); }
+    .add-preview { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+    .add-preview-img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
+    .add-preview-noimg { width: 36px; height: 36px; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; border: 1px solid var(--border); }
+    .add-preview-name { font-size: .82rem; color: var(--text); line-height: 1.2; }
+    .add-preview-uom  { font-size: .7rem; color: var(--muted); }
+    .add-row-price-val { font-size: .88rem; font-weight: 600; color: var(--text); }
+    .add-row-sub-val  { font-size: .88rem; font-weight: 700; }
 
     /* ── Buttons ── */
     .btn {
@@ -208,8 +229,27 @@
     .modal-close { background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; line-height: 1; }
     .modal-body { padding: 16px; max-height: 75vh; overflow-y: auto; }
 
+    /* ── Barcode scanner ── */
+    .scanner-video { width: 100%; border-radius: 8px; background: #000; display: block; }
+    .scanner-wrap { position: relative; border-radius: 8px; overflow: hidden; }
+    .scanner-line {
+      position: absolute; left: 8%; right: 8%; height: 2px;
+      background: var(--accent); box-shadow: 0 0 6px var(--accent);
+      animation: scan-sweep 2s ease-in-out infinite;
+    }
+    @keyframes scan-sweep {
+      0%   { top: 15%; }
+      50%  { top: 80%; }
+      100% { top: 15%; }
+    }
+    .scanner-corners::before, .scanner-corners::after {
+      content: ''; position: absolute; width: 28px; height: 28px; border-color: #fff; border-style: solid; opacity: .8;
+    }
+    .scanner-corners::before { top: 8px; left: 8px; border-width: 3px 0 0 3px; }
+    .scanner-corners::after  { bottom: 8px; right: 8px; border-width: 0 3px 3px 0; }
+
     /* ── Catalog grid ── */
-    .catalog-search { margin-bottom: 12px; }
+    .catalog-search { margin-bottom: 0; flex: 1; }
     .catalog-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -229,7 +269,8 @@
     .cat-card-body { padding: 8px; }
     .cat-card-code { font-size: .72rem; font-weight: 700; color: var(--primary); }
     .cat-card-name { font-size: .78rem; color: var(--text); margin: 2px 0; line-height: 1.3; }
-    .cat-card-price { font-size: .78rem; color: var(--accent); font-weight: 700; }
+    .cat-card-price { font-size: .82rem; color: var(--accent); font-weight: 700; }
+    .cat-card-price2 { font-size: .74rem; color: var(--muted); font-weight: 600; margin-top: 1px; }
     .cat-card-price-row { font-size: .7rem; color: var(--muted); }
     .cat-add-btn { display: block; width: 100%; padding: 5px; border: none; background: var(--accent); color: #fff; font-size: .75rem; font-weight: 700; cursor: pointer; }
     .cat-add-btn:hover { opacity: .85; }
@@ -309,51 +350,52 @@
     </div>
   </div>
 
-  <!-- ── Agregar productos ── -->
+  <!-- ── PRODUCTOS ── -->
   <div class="card">
-    <h2>Agregar producto</h2>
-    <div class="add-product-row">
-      <div class="form-group">
-        <label>Código de producto</label>
-        <input id="prod-code" type="text" placeholder="Ej: CER-001" style="text-transform:uppercase" />
-      </div>
-      <div class="form-group qty-group">
-        <label>Cantidad</label>
-        <input id="prod-qty" type="number" min="0.01" step="0.01" value="1" />
-      </div>
-      <div style="display:flex;gap:6px;align-items:flex-end;padding-bottom:0">
-        <button class="btn btn-primary" onclick="addProduct()">➕ Agregar</button>
-        <button class="btn btn-outline btn-sm" onclick="openCatalog()" title="Abrir catálogo">📋 Catálogo</button>
-      </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin-bottom:0">📦 PRODUCTOS</h2>
+      <button class="btn btn-outline btn-sm" onclick="openCatalog()">📋 Catálogo</button>
     </div>
-  </div>
-
-  <!-- ── Líneas del pedido ── -->
-  <div class="card" id="lines-card">
-    <h2>Líneas del pedido</h2>
-    <div id="lines-empty" style="color:var(--muted);font-size:.85rem;padding:8px 0">
-      Sin productos aún. Agregá por código o desde el catálogo.
-    </div>
-    <div id="lines-wrap" style="display:none">
-      <table class="lines-table">
+    <div style="overflow-x:auto">
+      <table class="lines-table" style="min-width:480px">
         <thead>
           <tr>
-            <th></th>
-            <th>Código</th>
-            <th>Producto</th>
-            <th>UoM</th>
-            <th>Precio</th>
-            <th>Cant.</th>
-            <th>Subtotal</th>
+            <th>CÓDIGO</th>
+            <th>DESCRIPCIÓN</th>
+            <th>CANT.</th>
+            <th>PRECIO UNIT.<br/><span class="pl-col-sub" id="pl-col-label">USD BCV</span></th>
+            <th>SUBTOTAL</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="lines-tbody"></tbody>
+        <tfoot>
+          <tr class="add-row">
+            <td>
+              <div style="display:flex;gap:5px;align-items:center">
+                <input id="prod-code" class="add-row-code" type="text" placeholder="EJ: CER-001"
+                  oninput="schedulePreview()" onkeydown="if(event.key==='Enter'){confirmAdd()}" />
+                <button class="btn-pkg" onclick="openBarcodeScannerForCode()" title="Escanear código de barras">📷</button>
+              </div>
+            </td>
+            <td id="add-preview-cell">
+              <span style="color:var(--muted);font-size:.82rem">—</span>
+            </td>
+            <td><input id="prod-qty" class="add-row-qty" type="number" min="0.01" step="0.01" value="1"
+              oninput="updateAddSubtotal()" /></td>
+            <td><span id="add-row-price" class="add-row-price-val" style="color:var(--muted)">0.00</span></td>
+            <td><span id="add-row-subtotal" class="add-row-sub-val" style="color:var(--muted)">USD 0.0</span></td>
+            <td>
+              <button id="btn-confirm-add" class="btn btn-primary btn-sm" onclick="confirmAdd()" disabled
+                title="Agregar producto" style="opacity:.4">➕</button>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-      <div class="total-row">
-        <span class="total-label">TOTAL ESTIMADO</span>
-        <span class="total-value" id="total-value">0.00</span>
-      </div>
+    </div>
+    <div class="total-row">
+      <span class="total-label">TOTAL ESTIMADO</span>
+      <span class="total-value" id="total-value">0.00</span>
     </div>
   </div>
 
@@ -387,9 +429,37 @@
       <button class="modal-close" onclick="closeModal('modal-catalog')">×</button>
     </div>
     <div class="modal-body">
-      <input class="catalog-search" id="cat-search" type="text" placeholder="🔍 Buscar por nombre o código..." oninput="filterCatalog()" />
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input class="catalog-search" id="cat-search" type="text" placeholder="🔍 Buscar por nombre o código..." oninput="filterCatalog()" />
+        <button class="btn btn-outline btn-sm" onclick="openBarcodeScanner()" title="Escanear código de barras" style="white-space:nowrap;flex-shrink:0">📷 Escanear</button>
+      </div>
       <div id="cat-loading" style="text-align:center;padding:20px;color:var(--muted)">Cargando catálogo...</div>
       <div class="catalog-grid" id="cat-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL — Escáner de código de barras
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-scanner">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <h3>📷 Escanear código de barras</h3>
+      <button class="modal-close" onclick="stopScanner()">×</button>
+    </div>
+    <div class="modal-body" style="padding:14px">
+      <p style="font-size:.82rem;color:var(--muted);text-align:center;margin-bottom:12px">
+        Apuntá la cámara al código de barras del producto
+      </p>
+      <div class="scanner-wrap scanner-corners">
+        <video id="scanner-video" class="scanner-video" playsinline muted></video>
+        <div class="scanner-line"></div>
+      </div>
+      <div id="scanner-status" style="text-align:center;padding:10px 0 4px;font-size:.82rem;color:var(--muted)">
+        Buscando código...
+      </div>
+      <button class="btn btn-outline btn-full" onclick="stopScanner()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -411,8 +481,8 @@
 
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
-let lines    = [];
-let catalog  = [];
+let lines    = [];       // [{variant_id, tmpl_id, code, name, uom, price, qty, image, price_per_m2, price_per_box, m2_per_box, box_name}]
+let catalog  = [];       // cache del catálogo
 let activePl = "USD BCV";
 
 // ── Pricelist tabs ────────────────────────────────────────────────────────────
@@ -422,52 +492,130 @@ document.querySelectorAll('.pl-tab').forEach(tab => {
     tab.classList.add('active');
     activePl = tab.dataset.pl;
     document.getElementById('header-pl').textContent = `Tarifa: ${activePl}`;
+    document.getElementById('pl-col-label').textContent = activePl;
+    // Actualizar precios en catálogo si está cargado
     renderCatalog();
   });
 });
 document.getElementById('header-pl').textContent = `Tarifa: ${activePl}`;
+document.getElementById('pl-col-label').textContent = activePl;
 
-// ── Add product by code ───────────────────────────────────────────────────────
-async function addProduct() {
-  const code = document.getElementById('prod-code').value.trim().toUpperCase();
-  const qty  = parseFloat(document.getElementById('prod-qty').value) || 1;
-  if (!code) { showToast('Ingresá un código de producto', 'error'); return; }
+// ── Add product: preview + confirm ───────────────────────────────────────────
+let _previewProduct = null;  // producto buscado, pendiente de confirmar
+let _previewTimer   = null;
 
+function schedulePreview() {
+  clearTimeout(_previewTimer);
+  const code = document.getElementById('prod-code').value.trim();
+  if (!code) { clearAddPreview(); return; }
+  _previewTimer = setTimeout(() => fetchPreview(code.toUpperCase()), 500);
+}
+
+async function fetchPreview(code) {
+  if (!code) return;
   showLoader();
   try {
     const res  = await fetch(`/api/search_product?code=${encodeURIComponent(code)}&pricelist=${encodeURIComponent(activePl)}`);
     const data = await res.json();
-    if (!data.ok) { showToast(data.error, 'error'); return; }
+    if (!data.ok) { clearAddPreview(); showToast(data.error, 'error'); return; }
     const p = data.product;
-    pushLine({
-      variant_id:    p.variant_id,
-      tmpl_id:       p.tmpl_id,
-      code:          p.code,
-      name:          p.name,
-      uom:           p.uom,
-      price:         p.price,
-      qty:           qty,
-      image:         p.image,
-      price_per_m2:  p.price_per_m2,
-      price_per_box: p.price_per_box,
-      m2_per_box:    p.m2_per_box,
-      box_name:      p.box_name,
-    });
-    document.getElementById('prod-code').value = '';
-    document.getElementById('prod-qty').value  = '1';
-    document.getElementById('prod-code').focus();
+    _previewProduct = p;
+
+    // Mostrar imagen + descripción en celda de preview
+    const imgHtml = p.image
+      ? `<img class="add-preview-img" src="data:image/png;base64,${p.image}" alt="${p.code}">`
+      : `<div class="add-preview-noimg">📦</div>`;
+    document.getElementById('add-preview-cell').innerHTML = `
+      <div class="add-preview">
+        ${imgHtml}
+        <div>
+          <div class="add-preview-name">${p.name}</div>
+          <div class="add-preview-uom">${p.uom || ''}</div>
+        </div>
+      </div>`;
+
+    // Actualizar precio y subtotal en la fila
+    document.getElementById('add-row-price').textContent    = p.price.toFixed(2);
+    document.getElementById('add-row-price').style.color    = 'var(--text)';
+    updateAddSubtotal();
+
+    // Habilitar botón ➕
+    const btn = document.getElementById('btn-confirm-add');
+    btn.disabled = false;
+    btn.style.opacity = '1';
   } catch(e) {
+    clearAddPreview();
     showToast('Error de red: ' + e.message, 'error');
   } finally {
     hideLoader();
   }
 }
-document.getElementById('prod-code').addEventListener('keydown', e => {
-  if (e.key === 'Enter') addProduct();
-});
+
+function updateAddSubtotal() {
+  const price = _previewProduct ? _previewProduct.price : 0;
+  const qty   = parseFloat(document.getElementById('prod-qty').value) || 1;
+  const sub   = price * qty;
+  const el    = document.getElementById('add-row-subtotal');
+  el.textContent  = `USD ${sub.toFixed(2)}`;
+  el.style.color  = sub > 0 ? 'var(--text)' : 'var(--muted)';
+}
+
+function clearAddPreview() {
+  _previewProduct = null;
+  document.getElementById('add-preview-cell').innerHTML = '<span style="color:var(--muted);font-size:.82rem">—</span>';
+  document.getElementById('add-row-price').textContent   = '0.00';
+  document.getElementById('add-row-price').style.color   = 'var(--muted)';
+  document.getElementById('add-row-subtotal').textContent = 'USD 0.0';
+  document.getElementById('add-row-subtotal').style.color = 'var(--muted)';
+  const btn = document.getElementById('btn-confirm-add');
+  btn.disabled = true; btn.style.opacity = '0.4';
+}
+
+function confirmAdd() {
+  if (!_previewProduct) {
+    // Si no hay preview, intentar buscar primero
+    const code = document.getElementById('prod-code').value.trim().toUpperCase();
+    if (code) fetchPreview(code).then(() => { if (_previewProduct) _doAdd(); });
+    return;
+  }
+  _doAdd();
+}
+
+function _doAdd() {
+  const p   = _previewProduct;
+  const qty = parseFloat(document.getElementById('prod-qty').value) || 1;
+  pushLine({
+    variant_id:    p.variant_id,
+    tmpl_id:       p.tmpl_id,
+    code:          p.code,
+    name:          p.name,
+    uom:           p.uom,
+    price:         p.price,
+    qty:           qty,
+    image:         p.image,
+    price_per_m2:  p.price_per_m2,
+    price_per_box: p.price_per_box,
+    m2_per_box:    p.m2_per_box,
+    box_name:      p.box_name,
+  });
+  // Resetear fila
+  document.getElementById('prod-code').value = '';
+  document.getElementById('prod-qty').value  = '1';
+  clearAddPreview();
+  document.getElementById('prod-code').focus();
+}
+
+// Mantener compatibilidad: addProduct() = fetchPreview + confirmAdd
+async function addProduct() {
+  const code = document.getElementById('prod-code').value.trim().toUpperCase();
+  if (!code) { showToast('Ingresá un código de producto', 'error'); return; }
+  await fetchPreview(code);
+  if (_previewProduct) _doAdd();
+}
 
 // ── Lines management ──────────────────────────────────────────────────────────
 function pushLine(p) {
+  // Si ya existe el mismo producto, sumar cantidad
   const existing = lines.find(l => l.variant_id === p.variant_id);
   if (existing) {
     existing.qty += p.qty;
@@ -489,15 +637,11 @@ function updateQty(index, val) {
 
 function renderLines() {
   const tbody = document.getElementById('lines-tbody');
-  const empty = document.getElementById('lines-empty');
-  const wrap  = document.getElementById('lines-wrap');
   if (lines.length === 0) {
-    empty.style.display = '';
-    wrap.style.display  = 'none';
+    tbody.innerHTML = '';
+    document.getElementById('total-value').textContent = '0.00';
     return;
   }
-  empty.style.display = 'none';
-  wrap.style.display  = '';
 
   tbody.innerHTML = lines.map((l, i) => {
     const imgHtml = l.image
@@ -542,11 +686,14 @@ function formatPrice(price, uom, priceM2, priceBox, m2Box, boxName) {
   if (!m2Box) {
     return `${price.toFixed(2)}<br/><span style="font-size:.7rem;color:var(--muted)">${uom}</span>`;
   }
+  // Tiene conversión m²/caja
   if (uomLow.includes('m') && (uomLow.includes('2') || uomLow.includes('²'))) {
+    // Precio base es por m²
     return `
       ${price.toFixed(2)} / m²
       <div class="m2-badge">📦 ${boxName||'Caja'} = ${m2Box} m² → ${priceBox ? priceBox.toFixed(2) : '—'}</div>`;
   } else {
+    // Precio base es por caja
     return `
       ${price.toFixed(2)} / ${boxName||'caja'}
       <div class="m2-badge">📐 ${m2Box} m²/caja → ${priceM2 ? priceM2.toFixed(2) : '—'} /m²</div>`;
@@ -661,8 +808,11 @@ function renderCatalog(filter = '') {
   }
 
   grid.innerHTML = items.map(p => {
-    const price = (p.prices && p.prices[activePl]) ? p.prices[activePl] : 0;
+    const priceBCV = (p.prices && p.prices['USD BCV']) ? p.prices['USD BCV'] : 0;
+    const priceUSD = (p.prices && p.prices['USD'])     ? p.prices['USD']     : 0;
+    const price    = (p.prices && p.prices[activePl])  ? p.prices[activePl]  : 0;
 
+    // Línea de precio m²/caja
     let priceExtra = '';
     if (p.m2_per_box && p.m2_per_box > 0 && price > 0) {
       const uomLow = (p.uom || '').toLowerCase();
@@ -685,7 +835,8 @@ function renderCatalog(filter = '') {
         <div class="cat-card-body">
           <div class="cat-card-code">${p.code || '—'}</div>
           <div class="cat-card-name">${p.name}</div>
-          <div class="cat-card-price">${price.toFixed(2)} ${activePl}</div>
+          <div class="cat-card-price">${priceBCV.toFixed(2)} USD BCV</div>
+          <div class="cat-card-price2">${priceUSD.toFixed(2)} USD</div>
           ${priceExtra}
         </div>
         <button class="cat-add-btn" onclick="event.stopPropagation(); addFromCatalog(${p.id}, 1)">
@@ -700,6 +851,7 @@ function addFromCatalog(tmplId, qty) {
   if (!p) return;
   const price = (p.prices && p.prices[activePl]) ? p.prices[activePl] : 0;
 
+  // Calcular m2/caja
   let price_per_m2 = null, price_per_box = null;
   const uomLow = (p.uom || '').toLowerCase();
   if (p.m2_per_box && p.m2_per_box > 0 && price > 0) {
@@ -824,10 +976,92 @@ function showToast(msg, type = '') {
 function showLoader() { document.getElementById('loader').classList.add('show'); }
 function hideLoader() { document.getElementById('loader').classList.remove('show'); }
 
+// ── Barcode scanner ───────────────────────────────────────────────────────────
+let _scanStream = null;
+let _scanRAF    = null;
+let _scanTarget = null; // 'prod-code' o 'cat-search'
+
+// Versión para el campo de código principal (tabla PRODUCTOS)
+function openBarcodeScannerForCode() {
+  _scanTarget = 'prod-code';
+  openBarcodeScanner();
+}
+
+async function openBarcodeScanner() {
+  _scanTarget = _scanTarget || 'cat-search';
+  // Soporte: BarcodeDetector nativo (Chrome Android 88+)
+  if (!('BarcodeDetector' in window)) {
+    showToast('Tu navegador no soporta escaneo directo. Actualizá Chrome o usá el buscador manual.', 'error');
+    return;
+  }
+  openModal('modal-scanner');
+  document.getElementById('scanner-status').textContent = 'Iniciando cámara...';
+
+  try {
+    _scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }
+    });
+    const video = document.getElementById('scanner-video');
+    video.srcObject = _scanStream;
+    await video.play();
+
+    const detector = new BarcodeDetector({
+      formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'upc_a', 'upc_e', 'qr_code', 'data_matrix', 'itf']
+    });
+
+    document.getElementById('scanner-status').textContent = 'Buscando código de barras...';
+
+    async function tick() {
+      if (!_scanStream) return; // cancelled
+      if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+        try {
+          const barcodes = await detector.detect(video);
+          if (barcodes.length > 0) {
+            const code = barcodes[0].rawValue;
+            const target = _scanTarget || 'cat-search';
+            stopScanner();
+            if (target === 'prod-code') {
+              // Llenar campo de código y buscar producto directamente
+              document.getElementById('prod-code').value = code.toUpperCase();
+              document.getElementById('prod-code').focus();
+              addProduct();
+            } else {
+              // Llenar buscador del catálogo y filtrar
+              document.getElementById('cat-search').value = code;
+              filterCatalog();
+            }
+            showToast(`📷 Código escaneado: ${code}`, 'success');
+            return;
+          }
+        } catch(_) { /* frame no procesable, ignorar */ }
+      }
+      _scanRAF = requestAnimationFrame(tick);
+    }
+    _scanRAF = requestAnimationFrame(tick);
+
+  } catch(e) {
+    stopScanner();
+    if (e.name === 'NotAllowedError') {
+      showToast('Permiso de cámara denegado. Habilitalo en Configuración.', 'error');
+    } else {
+      showToast('No se pudo acceder a la cámara: ' + e.message, 'error');
+    }
+  }
+}
+
+function stopScanner() {
+  if (_scanRAF)    { cancelAnimationFrame(_scanRAF); _scanRAF = null; }
+  if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; }
+  const video = document.getElementById('scanner-video');
+  if (video) video.srcObject = null;
+  _scanTarget = null;
+  closeModal('modal-scanner');
+}
+
 // ── PWA service worker ────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/static/sw.js').catch(() => {});
 }
 </script>
 </body>
-  </html>
+</html>
