@@ -439,4 +439,74 @@ def create_order():
         # Nota interna: vendedor + nota del usuario
         note_parts = [f"Vendedor: {vendedor}"]
         if nota:
-     
+                 note_parts.append(nota)
+        full_note = "\n".join(note_parts)
+
+        order_vals = {
+            "partner_id": partner_id,
+            "order_line": order_lines,
+            "note": full_note,
+            "state": "draft",
+        }
+        if pl_id:
+            order_vals["pricelist_id"] = pl_id
+
+        order_id = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "sale.order", "create",
+            [order_vals]
+        )
+
+        # Obtener nombre del pedido
+        order = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "sale.order", "read",
+            [order_id],
+            {"fields": ["name"]}
+        )[0]
+        order_name = order["name"]
+
+        # Notificación Telegram
+        if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+            _send_telegram(vendedor, cliente, pricelist, lines, order_name)
+
+        return jsonify({"ok": True, "order_id": order_id, "order_name": order_name})
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _send_telegram(vendedor, cliente, pricelist, lines, order_name):
+    """Envía notificación de nuevo pedido por Telegram."""
+    total = sum(l["price"] * l["qty"] for l in lines)
+    msg_lines = [
+        f"🛒 *Nuevo Pedido GONDER Sucursal* — {order_name}",
+        f"👤 Vendedor: {vendedor}",
+        f"🏢 Cliente: {cliente}",
+        f"💲 Tarifa: {pricelist}",
+        "",
+        "*Productos:*",
+    ]
+    for l in lines:
+        msg_lines.append(
+            f"  • [{l['code']}] {l['name']} — x{l['qty']} @ {l['price']:.2f}"
+        )
+    msg_lines.append(f"\n💰 *Total estimado: {total:.2f}*")
+
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": "\n".join(msg_lines),
+                "parse_mode": "Markdown",
+            },
+            timeout=5,
+        )
+    except Exception:
+        pass  # No interrumpir el flujo si falla Telegram
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
