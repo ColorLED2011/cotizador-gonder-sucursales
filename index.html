@@ -222,8 +222,27 @@
     .modal-close { background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; line-height: 1; }
     .modal-body { padding: 16px; max-height: 75vh; overflow-y: auto; }
 
+    /* ── Barcode scanner ── */
+    .scanner-video { width: 100%; border-radius: 8px; background: #000; display: block; }
+    .scanner-wrap { position: relative; border-radius: 8px; overflow: hidden; }
+    .scanner-line {
+      position: absolute; left: 8%; right: 8%; height: 2px;
+      background: var(--accent); box-shadow: 0 0 6px var(--accent);
+      animation: scan-sweep 2s ease-in-out infinite;
+    }
+    @keyframes scan-sweep {
+      0%   { top: 15%; }
+      50%  { top: 80%; }
+      100% { top: 15%; }
+    }
+    .scanner-corners::before, .scanner-corners::after {
+      content: ''; position: absolute; width: 28px; height: 28px; border-color: #fff; border-style: solid; opacity: .8;
+    }
+    .scanner-corners::before { top: 8px; left: 8px; border-width: 3px 0 0 3px; }
+    .scanner-corners::after  { bottom: 8px; right: 8px; border-width: 0 3px 3px 0; }
+
     /* ── Catalog grid ── */
-    .catalog-search { margin-bottom: 12px; }
+    .catalog-search { margin-bottom: 0; flex: 1; }
     .catalog-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -395,9 +414,37 @@
       <button class="modal-close" onclick="closeModal('modal-catalog')">×</button>
     </div>
     <div class="modal-body">
-      <input class="catalog-search" id="cat-search" type="text" placeholder="🔍 Buscar por nombre o código..." oninput="filterCatalog()" />
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input class="catalog-search" id="cat-search" type="text" placeholder="🔍 Buscar por nombre o código..." oninput="filterCatalog()" />
+        <button class="btn btn-outline btn-sm" onclick="openBarcodeScanner()" title="Escanear código de barras" style="white-space:nowrap;flex-shrink:0">📷 Escanear</button>
+      </div>
       <div id="cat-loading" style="text-align:center;padding:20px;color:var(--muted)">Cargando catálogo...</div>
       <div class="catalog-grid" id="cat-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL — Escáner de código de barras
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-scanner">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header">
+      <h3>📷 Escanear código de barras</h3>
+      <button class="modal-close" onclick="stopScanner()">×</button>
+    </div>
+    <div class="modal-body" style="padding:14px">
+      <p style="font-size:.82rem;color:var(--muted);text-align:center;margin-bottom:12px">
+        Apuntá la cámara al código de barras del producto
+      </p>
+      <div class="scanner-wrap scanner-corners">
+        <video id="scanner-video" class="scanner-video" playsinline muted></video>
+        <div class="scanner-line"></div>
+      </div>
+      <div id="scanner-status" style="text-align:center;padding:10px 0 4px;font-size:.82rem;color:var(--muted)">
+        Buscando código...
+      </div>
+      <button class="btn btn-outline btn-full" onclick="stopScanner()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -836,6 +883,72 @@ function showToast(msg, type = '') {
 // ── Loader ────────────────────────────────────────────────────────────────────
 function showLoader() { document.getElementById('loader').classList.add('show'); }
 function hideLoader() { document.getElementById('loader').classList.remove('show'); }
+
+// ── Barcode scanner ───────────────────────────────────────────────────────────
+let _scanStream = null;
+let _scanRAF    = null;
+
+async function openBarcodeScanner() {
+  // Soporte: BarcodeDetector nativo (Chrome Android 88+)
+  if (!('BarcodeDetector' in window)) {
+    showToast('Tu navegador no soporta escaneo directo. Actualizá Chrome o usá el buscador manual.', 'error');
+    return;
+  }
+  openModal('modal-scanner');
+  document.getElementById('scanner-status').textContent = 'Iniciando cámara...';
+
+  try {
+    _scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }
+    });
+    const video = document.getElementById('scanner-video');
+    video.srcObject = _scanStream;
+    await video.play();
+
+    const detector = new BarcodeDetector({
+      formats: ['code_128', 'ean_13', 'ean_8', 'code_39', 'upc_a', 'upc_e', 'qr_code', 'data_matrix', 'itf']
+    });
+
+    document.getElementById('scanner-status').textContent = 'Buscando código de barras...';
+
+    async function tick() {
+      if (!_scanStream) return; // cancelled
+      if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+        try {
+          const barcodes = await detector.detect(video);
+          if (barcodes.length > 0) {
+            const code = barcodes[0].rawValue;
+            stopScanner();
+            // Llenar buscador del catálogo y filtrar
+            const searchInput = document.getElementById('cat-search');
+            searchInput.value = code;
+            filterCatalog();
+            showToast(`📦 Código escaneado: ${code}`, 'success');
+            return;
+          }
+        } catch(_) { /* frame no procesable, ignorar */ }
+      }
+      _scanRAF = requestAnimationFrame(tick);
+    }
+    _scanRAF = requestAnimationFrame(tick);
+
+  } catch(e) {
+    stopScanner();
+    if (e.name === 'NotAllowedError') {
+      showToast('Permiso de cámara denegado. Habilitalo en Configuración.', 'error');
+    } else {
+      showToast('No se pudo acceder a la cámara: ' + e.message, 'error');
+    }
+  }
+}
+
+function stopScanner() {
+  if (_scanRAF)    { cancelAnimationFrame(_scanRAF); _scanRAF = null; }
+  if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; }
+  const video = document.getElementById('scanner-video');
+  if (video) video.srcObject = null;
+  closeModal('modal-scanner');
+}
 
 // ── PWA service worker ────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
