@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cotizador GONDER Sucursales</title>
+  <link rel="manifest" href="/static/manifest.json" />
+  <meta name="theme-color" content="#1a2e4a" />
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1a2e4a;
+      --accent:  #e67e22;
+      --bg:      #f4f6f9;
+      --card:    #ffffff;
+      --border:  #dde1e7;
+      --text:    #2c3e50;
+      --muted:   #7f8c8d;
+      --danger:  #e74c3c;
+      --success: #27ae60;
+    }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--primary);
+      color: #fff;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .3px; }
+    header span { font-size: .75rem; opacity: .75; }
+
+    /* ── Main layout ── */
+    main { max-width: 760px; margin: 0 auto; padding: 16px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .card h2 { font-size: .85rem; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+
+    /* ── Forms ── */
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .form-group { display: flex; flex-direction: column; flex: 1; min-width: 140px; }
+    label { font-size: .75rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    input, select, textarea {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: .9rem;
+      color: var(--text);
+      transition: border-color .2s;
+      background: #fff;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    textarea { resize: vertical; min-height: 60px; }
+
+    /* ── Pricelist selector ── */
+    .pricelist-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .pl-tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      font-size: .85rem;
+      font-weight: 600;
+      transition: all .2s;
+      background: #fff;
+      color: var(--muted);
+    }
+    .pl-tab.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Product add row (inline in table) ── */
+    .add-row { background: #fafbfc; }
+    .add-row td { padding: 8px 6px; vertical-align: middle; border-bottom: none !important; }
+    .add-row-code {
+      width: 95px; border: 2px solid var(--accent) !important;
+      border-radius: 6px; padding: 6px 8px; font-size: .85rem; text-transform: uppercase;
+    }
+    .add-row-code:focus { outline: none; border-color: var(--primary) !important; }
+    .add-row-qty {
+      width: 58px; border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 6px; font-size: .85rem;
+    }
+    .btn-pkg {
+      padding: 6px 10px; font-size: 1.05rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); cursor: pointer; line-height: 1;
+    }
+    .btn-pkg:hover { background: #e8e8e8; }
+    .pl-col-sub { font-size: .68rem; font-weight: 400; color: var(--muted); }
+
+    /* ── Buttons ── */
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 9px 16px;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary  { background: var(--primary); color: #fff; }
+    .btn-accent   { background: var(--accent);  color: #fff; }
+    .btn-success  { background: var(--success);  color: #fff; }
+    .btn-outline  { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); }
+    .btn-danger   { background: var(--danger); color: #fff; padding: 5px 10px; font-size: .78rem; }
+    .btn-sm       { padding: 5px 10px; font-size: .78rem; }
+    .btn-full     { width: 100%; justify-content: center; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Product lines table ── */
+    .lines-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .lines-table th {
+      text-align: left;
+      font-size: .72rem;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 6px 8px;
+      border-bottom: 2px solid var(--border);
+    }
+    .lines-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .lines-table tr:last-child td { border-bottom: none; }
+    .product-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+    .no-img { width: 40px; height: 40px; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+    .m2-badge {
+      display: inline-block;
+      font-size: .68rem;
+      background: #eaf4ff;
+      color: #2980b9;
+      border-radius: 4px;
+      padding: 2px 5px;
+      margin-top: 2px;
+      font-weight: 600;
+    }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 10px 0 0; }
+    .total-label { font-size: .85rem; color: var(--muted); }
+    .total-value { font-size: 1.3rem; font-weight: 800; color: var(--primary); }
+
+    /* ── Action buttons row ── */
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .actions .btn { flex: 1; min-width: 120px; justify-content: center; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--primary);
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: .9rem;
+      font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,.3);
+      transition: transform .3s ease, opacity .3s;
+      opacity: 0;
+      z-index: 9999;
+      max-width: 320px;
+      text-align: center;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    #toast.error { background: var(--danger); }
+    #toast.success { background: var(--success); }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.55);
+      z-index: 500;
+      align-items: flex-start;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 20px 8px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 720px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.2);
+      overflow: hidden;
+    }
+    .modal-header {
+      background: var(--primary);
+      color: #fff;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-header h3 { font-size: 1rem; font-weight: 700; }
+    .modal-close { background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; line-height: 1; }
+    .modal-body { padding: 16px; max-height: 75vh; overflow-y: auto; }
+
+    /* ── Catalog grid ── */
+    .catalog-search { margin-bottom: 12px; }
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .cat-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow .2s, transform .15s;
+      background: #fff;
+    }
+    .cat-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.12); transform: translateY(-2px); }
+    .cat-card img { width: 100%; height: 100px; object-fit: cover; }
+    .cat-card .cat-no-img { width: 100%; height: 100px; display: flex; align-items: center; justify-content: center; background: var(--bg); font-size: 2rem; }
+    .cat-card-body { padding: 8px; }
+    .cat-card-code { font-size: .72rem; font-weight: 700; color: var(--primary); }
+    .cat-card-name { font-size: .78rem; color: var(--text); margin: 2px 0; line-height: 1.3; }
+    .cat-card-price { font-size: .78rem; color: var(--accent); font-weight: 700; }
+    .cat-card-price-row { font-size: .7rem; color: var(--muted); }
+    .cat-add-btn { display: block; width: 100%; padding: 5px; border: none; background: var(--accent); color: #fff; font-size: .75rem; font-weight: 700; cursor: pointer; }
+    .cat-add-btn:hover { opacity: .85; }
+
+    /* ── Ficha técnica ── */
+    .ficha-img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 8px; background: var(--bg); margin-bottom: 12px; }
+    .ficha-attrs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .attr-chip {
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: .78rem;
+    }
+    .attr-chip strong { display: block; font-size: .7rem; color: var(--muted); margin-bottom: 1px; }
+
+    /* ── Spinner ── */
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Loader overlay ── */
+    #loader {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(255,255,255,.7);
+      z-index: 9998;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #loader.show { display: flex; }
+    .loader-ring { width: 48px; height: 48px; border: 4px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+
+    /* ── Responsive ── */
+    @media (max-width: 480px) {
+      .form-group { min-width: 100%; }
+      .add-product-row { flex-wrap: wrap; }
+      .add-product-row .qty-group { min-width: 80px; }
+      .catalog-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🏗️ GONDER Sucursales</h1>
+  <span id="header-pl">Tarifa: —</span>
+</header>
+
+<div id="loader"><div class="loader-ring"></div><span style="font-size:.9rem;color:var(--muted)">Cargando...</span></div>
+<div id="toast"></div>
+
+<main>
+
+  <!-- ── Tarifa ── -->
+  <div class="card">
+    <h2>Tarifa de precios</h2>
+    <div class="pricelist-tabs" id="pl-tabs">
+      <div class="pl-tab active" data-pl="USD BCV">💵 USD BCV</div>
+      <div class="pl-tab" data-pl="USD">💲 USD</div>
+    </div>
+  </div>
+
+  <!-- ── Datos del pedido ── -->
+  <div class="card">
+    <h2>Datos del pedido</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Vendedor</label>
+        <input id="vendedor" type="text" placeholder="Tu nombre" />
+      </div>
+      <div class="form-group">
+        <label>Cliente / Sucursal</label>
+        <input id="cliente" type="text" placeholder="Nombre del cliente" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PRODUCTOS ── -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin-bottom:0">📦 PRODUCTOS</h2>
+      <button class="btn btn-outline btn-sm" onclick="openCatalog()">📋 Catálogo</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="lines-table" style="min-width:480px">
+        <thead>
+          <tr>
+            <th>CÓDIGO</th>
+            <th>DESCRIPCIÓN</th>
+            <th>CANT.</th>
+            <th>PRECIO UNIT.<br/><span class="pl-col-sub" id="pl-col-label">USD BCV</span></th>
+            <th>SUBTOTAL</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="lines-tbody"></tbody>
+        <tfoot>
+          <tr class="add-row">
+            <td>
+              <div style="display:flex;gap:5px;align-items:center">
+                <input id="prod-code" class="add-row-code" type="text" placeholder="EJ: CER-001" />
+                <button class="btn-pkg" onclick="addProduct()" title="Buscar y agregar">📦</button>
+              </div>
+            </td>
+            <td><span style="color:var(--muted)">—</span></td>
+            <td><input id="prod-qty" class="add-row-qty" type="number" min="0.01" step="0.01" value="1" /></td>
+            <td style="color:var(--muted)">0.00</td>
+            <td><strong style="color:var(--muted)">USD 0.0</strong></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="total-row">
+      <span class="total-label">TOTAL ESTIMADO</span>
+      <span class="total-value" id="total-value">0.00</span>
+    </div>
+  </div>
+
+  <!-- ── Nota ── -->
+  <div class="card">
+    <h2>Nota interna (opcional)</h2>
+    <textarea id="nota" placeholder="Observaciones, condiciones de pago, etc."></textarea>
+  </div>
+
+  <!-- ── Acciones ── -->
+  <div class="card">
+    <div class="actions">
+      <button class="btn btn-success" id="btn-send" onclick="sendOrder()">
+        📤 Enviar Pedido
+      </button>
+      <button class="btn btn-outline" onclick="resetForm()">
+        🔄 Pedido Nuevo
+      </button>
+    </div>
+  </div>
+
+</main>
+
+<!-- ══════════════════════════════════════════
+     MODAL — Catálogo
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-catalog">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>📋 Catálogo de Productos</h3>
+      <button class="modal-close" onclick="closeModal('modal-catalog')">×</button>
+    </div>
+    <div class="modal-body">
+      <input class="catalog-search" id="cat-search" type="text" placeholder="🔍 Buscar por nombre o código..." oninput="filterCatalog()" />
+      <div id="cat-loading" style="text-align:center;padding:20px;color:var(--muted)">Cargando catálogo...</div>
+      <div class="catalog-grid" id="cat-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODAL — Ficha técnica
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-ficha">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="ficha-title">Ficha Técnica</h3>
+      <button class="modal-close" onclick="closeModal('modal-ficha')">×</button>
+    </div>
+    <div class="modal-body" id="ficha-body">
+      <div style="text-align:center;padding:20px;color:var(--muted)">Cargando...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let lines    = [];       // [{variant_id, tmpl_id, code, name, uom, price, qty, image, price_per_m2, price_per_box, m2_per_box, box_name}]
+let catalog  = [];       // cache del catálogo
+let activePl = "USD BCV";
+
+// ── Pricelist tabs ────────────────────────────────────────────────────────────
+document.querySelectorAll('.pl-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.pl-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activePl = tab.dataset.pl;
+    document.getElementById('header-pl').textContent = `Tarifa: ${activePl}`;
+    document.getElementById('pl-col-label').textContent = activePl;
+    // Actualizar precios en catálogo si está cargado
+    renderCatalog();
+  });
+});
+document.getElementById('header-pl').textContent = `Tarifa: ${activePl}`;
+document.getElementById('pl-col-label').textContent = activePl;
+
+// ── Add product by code ───────────────────────────────────────────────────────
+async function addProduct() {
+  const code = document.getElementById('prod-code').value.trim().toUpperCase();
+  const qty  = parseFloat(document.getElementById('prod-qty').value) || 1;
+  if (!code) { showToast('Ingresá un código de producto', 'error'); return; }
+
+  showLoader();
+  try {
+    const res  = await fetch(`/api/search_product?code=${encodeURIComponent(code)}&pricelist=${encodeURIComponent(activePl)}`);
+    const data = await res.json();
+    if (!data.ok) { showToast(data.error, 'error'); return; }
+    const p = data.product;
+    pushLine({
+      variant_id:    p.variant_id,
+      tmpl_id:       p.tmpl_id,
+      code:          p.code,
+      name:          p.name,
+      uom:           p.uom,
+      price:         p.price,
+      qty:           qty,
+      image:         p.image,
+      price_per_m2:  p.price_per_m2,
+      price_per_box: p.price_per_box,
+      m2_per_box:    p.m2_per_box,
+      box_name:      p.box_name,
+    });
+    document.getElementById('prod-code').value = '';
+    document.getElementById('prod-qty').value  = '1';
+    document.getElementById('prod-code').focus();
+  } catch(e) {
+    showToast('Error de red: ' + e.message, 'error');
+  } finally {
+    hideLoader();
+  }
+}
+document.getElementById('prod-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addProduct();
+});
+
+// ── Lines management ──────────────────────────────────────────────────────────
+function pushLine(p) {
+  // Si ya existe el mismo producto, sumar cantidad
+  const existing = lines.find(l => l.variant_id === p.variant_id);
+  if (existing) {
+    existing.qty += p.qty;
+  } else {
+    lines.push(p);
+  }
+  renderLines();
+}
+
+function removeLine(index) {
+  lines.splice(index, 1);
+  renderLines();
+}
+
+function updateQty(index, val) {
+  lines[index].qty = parseFloat(val) || 0;
+  renderLines();
+}
+
+function renderLines() {
+  const tbody = document.getElementById('lines-tbody');
+  if (lines.length === 0) {
+    tbody.innerHTML = '';
+    document.getElementById('total-value').textContent = '0.00';
+    return;
+  }
+
+  tbody.innerHTML = lines.map((l, i) => {
+    const imgHtml = l.image
+      ? `<img class="product-thumb" src="data:image/png;base64,${l.image}" alt="${l.code}" />`
+      : `<div class="no-img">📦</div>`;
+
+    const priceDisplay = formatPrice(l.price, l.uom, l.price_per_m2, l.price_per_box, l.m2_per_box, l.box_name);
+    const subtotal = (l.price * l.qty).toFixed(2);
+
+    return `
+      <tr>
+        <td>
+          <div style="cursor:pointer" onclick="openFicha(${l.tmpl_id})">${imgHtml}</div>
+        </td>
+        <td>
+          <strong>${l.code}</strong>
+          <br/><span style="font-size:.7rem;color:var(--muted)">${l.uom}</span>
+        </td>
+        <td style="max-width:160px">${l.name}</td>
+        <td style="font-size:.8rem">
+          ${priceDisplay}
+        </td>
+        <td style="font-size:.85rem">${l.price.toFixed(2)}</td>
+        <td>
+          <input type="number" min="0.01" step="0.01" value="${l.qty}"
+            style="width:60px;padding:4px 6px;font-size:.85rem;border:1px solid var(--border);border-radius:6px"
+            onchange="updateQty(${i}, this.value)" />
+        </td>
+        <td style="font-weight:700">${subtotal}</td>
+        <td>
+          <button class="btn btn-danger" onclick="removeLine(${i})">✕</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const total = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  document.getElementById('total-value').textContent = total.toFixed(2);
+}
+
+function formatPrice(price, uom, priceM2, priceBox, m2Box, boxName) {
+  const uomLow = (uom || '').toLowerCase();
+  if (!m2Box) {
+    return `${price.toFixed(2)}<br/><span style="font-size:.7rem;color:var(--muted)">${uom}</span>`;
+  }
+  // Tiene conversión m²/caja
+  if (uomLow.includes('m') && (uomLow.includes('2') || uomLow.includes('²'))) {
+    // Precio base es por m²
+    return `
+      ${price.toFixed(2)} / m²
+      <div class="m2-badge">📦 ${boxName||'Caja'} = ${m2Box} m² → ${priceBox ? priceBox.toFixed(2) : '—'}</div>`;
+  } else {
+    // Precio base es por caja
+    return `
+      ${price.toFixed(2)} / ${boxName||'caja'}
+      <div class="m2-badge">📐 ${m2Box} m²/caja → ${priceM2 ? priceM2.toFixed(2) : '—'} /m²</div>`;
+  }
+}
+
+// ── Send order ────────────────────────────────────────────────────────────────
+async function sendOrder() {
+  const vendedor = document.getElementById('vendedor').value.trim();
+  const cliente  = document.getElementById('cliente').value.trim();
+  const nota     = document.getElementById('nota').value.trim();
+  if (!vendedor)       { showToast('Ingresá tu nombre (vendedor)', 'error'); return; }
+  if (!cliente)        { showToast('Ingresá el nombre del cliente', 'error'); return; }
+  if (lines.length === 0) { showToast('Agregá al menos un producto', 'error'); return; }
+
+  const btn = document.getElementById('btn-send');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enviando...';
+  showLoader();
+
+  const payload = {
+    vendedor,
+    cliente,
+    pricelist: activePl,
+    nota,
+    lines: lines.map(l => ({
+      variant_id: l.variant_id,
+      qty:        l.qty,
+      price:      l.price,
+      name:       l.name,
+      code:       l.code,
+    })),
+  };
+
+  try {
+    const res  = await fetch('/api/create_order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✅ Pedido ${data.order_name} creado en Odoo`, 'success');
+      resetForm();
+    } else {
+      showToast('Error: ' + data.error, 'error');
+    }
+  } catch(e) {
+    showToast('Error de red: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '📤 Enviar Pedido';
+    hideLoader();
+  }
+}
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+function resetForm() {
+  lines = [];
+  document.getElementById('vendedor').value = '';
+  document.getElementById('cliente').value  = '';
+  document.getElementById('nota').value     = '';
+  document.getElementById('prod-code').value = '';
+  document.getElementById('prod-qty').value  = '1';
+  renderLines();
+  showToast('Formulario limpio. Listo para nuevo pedido.', 'success');
+}
+
+// ── Catalog ───────────────────────────────────────────────────────────────────
+async function openCatalog() {
+  openModal('modal-catalog');
+  if (catalog.length === 0) {
+    document.getElementById('cat-loading').style.display = '';
+    document.getElementById('cat-grid').innerHTML = '';
+    showLoader();
+    try {
+      const res  = await fetch('/api/catalog');
+      const data = await res.json();
+      if (data.ok) {
+        catalog = data.products;
+        document.getElementById('cat-loading').style.display = 'none';
+        renderCatalog();
+      } else {
+        document.getElementById('cat-loading').textContent = 'Error: ' + data.error;
+      }
+    } catch(e) {
+      document.getElementById('cat-loading').textContent = 'Error de red';
+    } finally {
+      hideLoader();
+    }
+  } else {
+    document.getElementById('cat-loading').style.display = 'none';
+    renderCatalog();
+  }
+}
+
+function filterCatalog() {
+  renderCatalog(document.getElementById('cat-search').value.trim().toLowerCase());
+}
+
+function renderCatalog(filter = '') {
+  const grid = document.getElementById('cat-grid');
+  const items = filter
+    ? catalog.filter(p =>
+        (p.name || '').toLowerCase().includes(filter) ||
+        (p.code || '').toLowerCase().includes(filter))
+    : catalog;
+
+  if (items.length === 0) {
+    grid.innerHTML = '<p style="color:var(--muted);font-size:.85rem">Sin resultados.</p>';
+    return;
+  }
+
+  grid.innerHTML = items.map(p => {
+    const price = (p.prices && p.prices[activePl]) ? p.prices[activePl] : 0;
+
+    // Línea de precio m²/caja
+    let priceExtra = '';
+    if (p.m2_per_box && p.m2_per_box > 0 && price > 0) {
+      const uomLow = (p.uom || '').toLowerCase();
+      if (uomLow.includes('m') && (uomLow.includes('2') || uomLow.includes('²'))) {
+        const pBox = price * p.m2_per_box;
+        priceExtra = `<div class="cat-card-price-row">📦 ${p.box_packaging_name||'Caja'} (${p.m2_per_box}m²): ${pBox.toFixed(2)}</div>`;
+      } else {
+        const pM2 = price / p.m2_per_box;
+        priceExtra = `<div class="cat-card-price-row">📐 m²: ${pM2.toFixed(2)}</div>`;
+      }
+    }
+
+    const imgHtml = p.image
+      ? `<img src="data:image/png;base64,${p.image}" alt="${p.code}" loading="lazy" />`
+      : `<div class="cat-no-img">📦</div>`;
+
+    return `
+      <div class="cat-card" onclick="openFichaFromCatalog(${p.id})">
+        ${imgHtml}
+        <div class="cat-card-body">
+          <div class="cat-card-code">${p.code || '—'}</div>
+          <div class="cat-card-name">${p.name}</div>
+          <div class="cat-card-price">${price.toFixed(2)} ${activePl}</div>
+          ${priceExtra}
+        </div>
+        <button class="cat-add-btn" onclick="event.stopPropagation(); addFromCatalog(${p.id}, 1)">
+          ➕ Agregar
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function addFromCatalog(tmplId, qty) {
+  const p = catalog.find(c => c.id === tmplId);
+  if (!p) return;
+  const price = (p.prices && p.prices[activePl]) ? p.prices[activePl] : 0;
+
+  // Calcular m2/caja
+  let price_per_m2 = null, price_per_box = null;
+  const uomLow = (p.uom || '').toLowerCase();
+  if (p.m2_per_box && p.m2_per_box > 0 && price > 0) {
+    if (uomLow.includes('m') && (uomLow.includes('2') || uomLow.includes('²'))) {
+      price_per_m2 = price;
+      price_per_box = price * p.m2_per_box;
+    } else {
+      price_per_box = price;
+      price_per_m2  = price / p.m2_per_box;
+    }
+  }
+
+  pushLine({
+    variant_id:    p.variant_id,
+    tmpl_id:       p.id,
+    code:          p.code,
+    name:          p.name,
+    uom:           p.uom,
+    price:         price,
+    qty:           qty,
+    image:         p.image,
+    price_per_m2,
+    price_per_box,
+    m2_per_box:    p.m2_per_box,
+    box_name:      p.box_packaging_name,
+  });
+  showToast(`"${p.name}" agregado`, 'success');
+}
+
+function openFichaFromCatalog(tmplId) {
+  closeModal('modal-catalog');
+  openFicha(tmplId);
+}
+
+// ── Ficha técnica ─────────────────────────────────────────────────────────────
+async function openFicha(tmplId) {
+  openModal('modal-ficha');
+  document.getElementById('ficha-title').textContent = 'Ficha Técnica';
+  document.getElementById('ficha-body').innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)">Cargando...</div>';
+
+  showLoader();
+  try {
+    const res  = await fetch(`/api/product/${tmplId}`);
+    const data = await res.json();
+    if (!data.ok) { document.getElementById('ficha-body').innerHTML = `<p style="color:var(--danger)">${data.error}</p>`; return; }
+    const p = data.product;
+
+    document.getElementById('ficha-title').textContent = p.name;
+
+    let attrsHtml = '';
+    if (p.attributes && p.attributes.length > 0) {
+      attrsHtml = `
+        <h4 style="font-size:.8rem;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px">Atributos</h4>
+        <div class="ficha-attrs">
+          ${p.attributes.map(a => `
+            <div class="attr-chip">
+              <strong>${a.attr}</strong>${a.values.join(', ')}
+            </div>`).join('')}
+        </div>`;
+    }
+
+    let packHtml = '';
+    if (p.packaging && p.packaging.length > 0) {
+      packHtml = `
+        <h4 style="font-size:.8rem;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.5px">Presentaciones</h4>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${p.packaging.map(pk => `
+            <div class="attr-chip">
+              <strong>${pk.name}</strong>${pk.qty} ${p.uom}
+            </div>`).join('')}
+        </div>`;
+    }
+
+    const imgHtml = p.image
+      ? `<img class="ficha-img" src="data:image/png;base64,${p.image}" alt="${p.name}" />`
+      : `<div style="background:var(--bg);height:180px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:3rem;margin-bottom:12px">📦</div>`;
+
+    document.getElementById('ficha-body').innerHTML = `
+      ${imgHtml}
+      <div style="margin-bottom:6px">
+        <strong style="font-size:.9rem">${p.code || ''}</strong>
+        <span style="font-size:.8rem;color:var(--muted);margin-left:8px">${p.uom}</span>
+      </div>
+      ${p.description ? `<p style="font-size:.85rem;color:var(--muted);margin-bottom:8px">${p.description}</p>` : ''}
+      ${attrsHtml}
+      ${packHtml}
+      <div style="margin-top:14px">
+        <button class="btn btn-accent btn-full" onclick="addFromFicha(${tmplId})">
+          ➕ Agregar al pedido (x1)
+        </button>
+      </div>`;
+  } catch(e) {
+    document.getElementById('ficha-body').innerHTML = `<p style="color:var(--danger)">Error: ${e.message}</p>`;
+  } finally {
+    hideLoader();
+  }
+}
+
+function addFromFicha(tmplId) {
+  addFromCatalog(tmplId, 1);
+  closeModal('modal-ficha');
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent  = msg;
+  t.className    = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3200);
+}
+
+// ── Loader ────────────────────────────────────────────────────────────────────
+function showLoader() { document.getElementById('loader').classList.add('show'); }
+function hideLoader() { document.getElementById('loader').classList.remove('show'); }
+
+// ── PWA service worker ────────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
