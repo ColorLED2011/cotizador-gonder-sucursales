@@ -3,7 +3,7 @@ import xmlrpc.client
 import requests
 from flask import Flask, request, jsonify, render_template
 
-app = Flash(__name__)
+app = Flask(__name__)
 
 # ── Credenciales Odoo (desde variables de entorno) ─────────────────────────
 ODOO_URL      = os.environ.get("ODOO_URL",      "https://gonder.odoo.com")
