@@ -157,41 +157,79 @@ def list_pricelists():
 
 @app.route("/api/debug_price")
 def debug_price():
-    """Debug: muestra los pricelist items encontrados para un producto."""
+    """Debug completo: price_get, campos custom, todos los items de la tarifa."""
     code = request.args.get("code", "").strip().upper()
     if not code:
         return jsonify({"ok": False, "error": "code requerido"}), 400
     try:
         uid, models = get_odoo()
+
+        # Producto
         variants = call(models, uid, "product.product", "search_read",
             [[["default_code", "=", code]]],
-            {"fields": ["id", "name", "list_price", "product_tmpl_id"], "limit": 1})
+            {"fields": ["id", "name", "list_price", "standard_price",
+                        "product_tmpl_id", "uom_id"], "limit": 1})
         if not variants:
             return jsonify({"ok": False, "error": "Producto no encontrado"})
         p = variants[0]
         tmpl_id = p["product_tmpl_id"][0] if isinstance(p["product_tmpl_id"], list) else p["product_tmpl_id"]
 
-        # Buscar tarifas
-        pricelists = call(models, uid, "product.pricelist", "search_read",
-            [[]], {"fields": ["id", "name"]})
+        # Campos custom (x_*) del producto template
+        all_fields = models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD,
+            "product.template", "fields_get", [],
+            {"attributes": ["string", "type"]})
+        custom_fields = {k: v for k, v in all_fields.items() if k.startswith("x_")}
 
-        result = {"product": p, "tmpl_id": tmpl_id, "pricelists": pricelists, "items": {}}
+        custom_vals = {}
+        if custom_fields:
+            tmpl_data = call(models, uid, "product.template", "read",
+                [[tmpl_id]], {"fields": list(custom_fields.keys())})
+            if tmpl_data:
+                custom_vals = {k: tmpl_data[0].get(k) for k in custom_fields}
+
+        # Tarifas
+        pricelists = call(models, uid, "product.pricelist", "search_read",
+            [[]], {"fields": ["id", "name", "currency_id"]})
+
+        # Para cada tarifa: price_get, get_product_price, todos los items
+        price_results = {}
         for pl in pricelists:
-            items = call(models, uid, "product.pricelist.item", "search_read",
-                [[["pricelist_id", "=", pl["id"]]]],
-                {"fields": ["applied_on", "product_id", "product_tmpl_id",
-                            "compute_price", "fixed_price", "percent_price",
-                            "price_discount", "price_surcharge"]})
-            # Filter relevant ones
-            relevant = [i for i in items if (
-                (i["applied_on"] == "0_product_variant" and i.get("product_id") and
-                 (i["product_id"][0] if isinstance(i["product_id"], list) else i["product_id"]) == p["id"]) or
-                (i["applied_on"] == "1_product" and i.get("product_tmpl_id") and
-                 (i["product_tmpl_id"][0] if isinstance(i["product_tmpl_id"], list) else i["product_tmpl_id"]) == tmpl_id) or
-                i["applied_on"] == "3_global"
-            )]
-            result["items"][pl["name"]] = relevant
-        return jsonify(result)
+            pl_id = pl["id"]
+            entry = {"currency": pl.get("currency_id"), "price_get": None,
+                     "get_product_price": None, "all_items_count": 0}
+
+            try:
+                r = models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD,
+                    "product.pricelist", "price_get",
+                    [[pl_id], p["id"], 1.0])
+                entry["price_get"] = r
+            except Exception as e:
+                entry["price_get"] = f"ERROR: {e}"
+
+            try:
+                r2 = models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD,
+                    "product.pricelist", "get_product_price",
+                    [[pl_id], p["id"], 1.0, False])
+                entry["get_product_price"] = r2
+            except Exception as e:
+                entry["get_product_price"] = f"ERROR: {e}"
+
+            all_items = call(models, uid, "product.pricelist.item", "search_read",
+                [[["pricelist_id", "=", pl_id]]],
+                {"fields": ["applied_on", "compute_price", "fixed_price",
+                            "percent_price", "price_discount", "price_surcharge",
+                            "base", "base_pricelist_id"]})
+            entry["all_items_count"] = len(all_items)
+            entry["all_items"] = all_items
+
+            price_results[pl["name"]] = entry
+
+        return jsonify({
+            "product": p, "tmpl_id": tmpl_id,
+            "custom_fields": custom_fields,
+            "custom_values": custom_vals,
+            "price_results": price_results
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
