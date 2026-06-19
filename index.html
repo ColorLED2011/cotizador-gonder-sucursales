@@ -110,6 +110,13 @@
     }
     .btn-pkg:hover { background: #e8e8e8; }
     .pl-col-sub { font-size: .68rem; font-weight: 400; color: var(--muted); }
+    .add-preview { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+    .add-preview-img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); flex-shrink: 0; }
+    .add-preview-noimg { width: 36px; height: 36px; border-radius: 6px; background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; border: 1px solid var(--border); }
+    .add-preview-name { font-size: .82rem; color: var(--text); line-height: 1.2; }
+    .add-preview-uom  { font-size: .7rem; color: var(--muted); }
+    .add-row-price-val { font-size: .88rem; font-weight: 600; color: var(--text); }
+    .add-row-sub-val  { font-size: .88rem; font-weight: 700; }
 
     /* ── Buttons ── */
     .btn {
@@ -365,16 +372,22 @@
           <tr class="add-row">
             <td>
               <div style="display:flex;gap:5px;align-items:center">
-                <input id="prod-code" class="add-row-code" type="text" placeholder="EJ: CER-001" />
-                <button class="btn-pkg" onclick="addProduct()" title="Buscar y agregar">📦</button>
+                <input id="prod-code" class="add-row-code" type="text" placeholder="EJ: CER-001"
+                  oninput="schedulePreview()" onkeydown="if(event.key==='Enter'){confirmAdd()}" />
                 <button class="btn-pkg" onclick="openBarcodeScannerForCode()" title="Escanear código de barras">📷</button>
               </div>
             </td>
-            <td><span style="color:var(--muted)">—</span></td>
-            <td><input id="prod-qty" class="add-row-qty" type="number" min="0.01" step="0.01" value="1" /></td>
-            <td style="color:var(--muted)">0.00</td>
-            <td><strong style="color:var(--muted)">USD 0.0</strong></td>
-            <td></td>
+            <td id="add-preview-cell">
+              <span style="color:var(--muted);font-size:.82rem">—</span>
+            </td>
+            <td><input id="prod-qty" class="add-row-qty" type="number" min="0.01" step="0.01" value="1"
+              oninput="updateAddSubtotal()" /></td>
+            <td><span id="add-row-price" class="add-row-price-val" style="color:var(--muted)">0.00</span></td>
+            <td><span id="add-row-subtotal" class="add-row-sub-val" style="color:var(--muted)">USD 0.0</span></td>
+            <td>
+              <button id="btn-confirm-add" class="btn btn-primary btn-sm" onclick="confirmAdd()" disabled
+                title="Agregar producto" style="opacity:.4">➕</button>
+            </td>
           </tr>
         </tfoot>
       </table>
@@ -486,44 +499,118 @@ document.querySelectorAll('.pl-tab').forEach(tab => {
 document.getElementById('header-pl').textContent = `Tarifa: ${activePl}`;
 document.getElementById('pl-col-label').textContent = activePl;
 
-// ── Add product by code ───────────────────────────────────────────────────────
-async function addProduct() {
-  const code = document.getElementById('prod-code').value.trim().toUpperCase();
-  const qty  = parseFloat(document.getElementById('prod-qty').value) || 1;
-  if (!code) { showToast('Ingresá un código de producto', 'error'); return; }
+// ── Add product: preview + confirm ───────────────────────────────────────────
+let _previewProduct = null;  // producto buscado, pendiente de confirmar
+let _previewTimer   = null;
 
+function schedulePreview() {
+  clearTimeout(_previewTimer);
+  const code = document.getElementById('prod-code').value.trim();
+  if (!code) { clearAddPreview(); return; }
+  _previewTimer = setTimeout(() => fetchPreview(code.toUpperCase()), 500);
+}
+
+async function fetchPreview(code) {
+  if (!code) return;
   showLoader();
   try {
     const res  = await fetch(`/api/search_product?code=${encodeURIComponent(code)}&pricelist=${encodeURIComponent(activePl)}`);
     const data = await res.json();
-    if (!data.ok) { showToast(data.error, 'error'); return; }
+    if (!data.ok) { clearAddPreview(); showToast(data.error, 'error'); return; }
     const p = data.product;
-    pushLine({
-      variant_id:    p.variant_id,
-      tmpl_id:       p.tmpl_id,
-      code:          p.code,
-      name:          p.name,
-      uom:           p.uom,
-      price:         p.price,
-      qty:           qty,
-      image:         p.image,
-      price_per_m2:  p.price_per_m2,
-      price_per_box: p.price_per_box,
-      m2_per_box:    p.m2_per_box,
-      box_name:      p.box_name,
-    });
-    document.getElementById('prod-code').value = '';
-    document.getElementById('prod-qty').value  = '1';
-    document.getElementById('prod-code').focus();
+    _previewProduct = p;
+
+    // Mostrar imagen + descripción en celda de preview
+    const imgHtml = p.image
+      ? `<img class="add-preview-img" src="data:image/png;base64,${p.image}" alt="${p.code}">`
+      : `<div class="add-preview-noimg">📦</div>`;
+    document.getElementById('add-preview-cell').innerHTML = `
+      <div class="add-preview">
+        ${imgHtml}
+        <div>
+          <div class="add-preview-name">${p.name}</div>
+          <div class="add-preview-uom">${p.uom || ''}</div>
+        </div>
+      </div>`;
+
+    // Actualizar precio y subtotal en la fila
+    document.getElementById('add-row-price').textContent    = p.price.toFixed(2);
+    document.getElementById('add-row-price').style.color    = 'var(--text)';
+    updateAddSubtotal();
+
+    // Habilitar botón ➕
+    const btn = document.getElementById('btn-confirm-add');
+    btn.disabled = false;
+    btn.style.opacity = '1';
   } catch(e) {
+    clearAddPreview();
     showToast('Error de red: ' + e.message, 'error');
   } finally {
     hideLoader();
   }
 }
-document.getElementById('prod-code').addEventListener('keydown', e => {
-  if (e.key === 'Enter') addProduct();
-});
+
+function updateAddSubtotal() {
+  const price = _previewProduct ? _previewProduct.price : 0;
+  const qty   = parseFloat(document.getElementById('prod-qty').value) || 1;
+  const sub   = price * qty;
+  const el    = document.getElementById('add-row-subtotal');
+  el.textContent  = `USD ${sub.toFixed(2)}`;
+  el.style.color  = sub > 0 ? 'var(--text)' : 'var(--muted)';
+}
+
+function clearAddPreview() {
+  _previewProduct = null;
+  document.getElementById('add-preview-cell').innerHTML = '<span style="color:var(--muted);font-size:.82rem">—</span>';
+  document.getElementById('add-row-price').textContent   = '0.00';
+  document.getElementById('add-row-price').style.color   = 'var(--muted)';
+  document.getElementById('add-row-subtotal').textContent = 'USD 0.0';
+  document.getElementById('add-row-subtotal').style.color = 'var(--muted)';
+  const btn = document.getElementById('btn-confirm-add');
+  btn.disabled = true; btn.style.opacity = '0.4';
+}
+
+function confirmAdd() {
+  if (!_previewProduct) {
+    // Si no hay preview, intentar buscar primero
+    const code = document.getElementById('prod-code').value.trim().toUpperCase();
+    if (code) fetchPreview(code).then(() => { if (_previewProduct) _doAdd(); });
+    return;
+  }
+  _doAdd();
+}
+
+function _doAdd() {
+  const p   = _previewProduct;
+  const qty = parseFloat(document.getElementById('prod-qty').value) || 1;
+  pushLine({
+    variant_id:    p.variant_id,
+    tmpl_id:       p.tmpl_id,
+    code:          p.code,
+    name:          p.name,
+    uom:           p.uom,
+    price:         p.price,
+    qty:           qty,
+    image:         p.image,
+    price_per_m2:  p.price_per_m2,
+    price_per_box: p.price_per_box,
+    m2_per_box:    p.m2_per_box,
+    box_name:      p.box_name,
+  });
+  // Resetear fila
+  document.getElementById('prod-code').value = '';
+  document.getElementById('prod-qty').value  = '1';
+  clearAddPreview();
+  document.getElementById('prod-code').focus();
+}
+
+// Mantener compatibilidad: addProduct() = fetchPreview + confirmAdd
+async function addProduct() {
+  const code = document.getElementById('prod-code').value.trim().toUpperCase();
+  if (!code) { showToast('Ingresá un código de producto', 'error'); return; }
+  await fetchPreview(code);
+  if (_previewProduct) _doAdd();
+}
 
 // ── Lines management ──────────────────────────────────────────────────────────
 function pushLine(p) {
