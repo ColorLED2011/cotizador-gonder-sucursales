@@ -37,57 +37,59 @@ def call(models, uid, model, method, args, kwargs=None):
     )
 
 
-def get_pricelist_items(models, uid, pl_id):
-    """Fetch ALL pricelist.item records for a pricelist in ONE call.
-    Returns (by_variant dict, by_template dict, global_item or None).
+def get_price_native(models, uid, pl_id, variant_id):
+    """Get price using Odoo's native pricelist engine (handles currency, rules, etc.).
+    Tries price_get (Odoo 10-14) then get_product_price (Odoo 14+).
     """
-    items = call(
-        models, uid, "product.pricelist.item", "search_read",
-        [[["pricelist_id", "=", pl_id]]],
-        {"fields": ["applied_on", "product_id", "product_tmpl_id",
-                    "compute_price", "fixed_price", "percent_price",
-                    "price_discount", "price_surcharge"]}
-    )
-    by_variant  = {}
-    by_template = {}
-    global_item = None
-    for item in items:
-        if item["applied_on"] == "0_product_variant" and item["product_id"]:
-            pid = item["product_id"][0] if isinstance(item["product_id"], list) else item["product_id"]
-            by_variant[pid] = item
-        elif item["applied_on"] == "1_product" and item["product_tmpl_id"]:
-            tid = item["product_tmpl_id"][0] if isinstance(item["product_tmpl_id"], list) else item["product_tmpl_id"]
-            by_template[tid] = item
-        elif item["applied_on"] == "3_global":
-            global_item = item
-    return by_variant, by_template, global_item
+    try:
+        result = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "product.pricelist", "price_get",
+            [[pl_id], variant_id, 1.0])
+        if isinstance(result, dict):
+            val = result.get(str(pl_id)) or result.get(pl_id)
+            if val is None and result:
+                val = list(result.values())[0]
+            return float(val) if val is not None else None
+        return float(result) if result is not None else None
+    except Exception:
+        pass
+    try:
+        result = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "product.pricelist", "get_product_price",
+            [[pl_id], variant_id, 1.0, False])
+        return float(result) if result is not None else None
+    except Exception:
+        return None
 
 
-def apply_price_rule(item, list_price):
-    """Apply a pricelist.item rule to list_price and return the result."""
-    if not item:
-        return list_price
-    cp = item.get("compute_price", "fixed")
-    if cp == "fixed":
-        return item["fixed_price"]
-    elif cp == "percentage":
-        return list_price * (1 - item.get("percent_price", 0) / 100)
-    elif cp == "formula":
-        # Odoo formula: base_price * (1 - price_discount%) + price_surcharge
-        return list_price * (1 - item.get("price_discount", 0) / 100) + item.get("price_surcharge", 0)
-    return list_price
-
-
-def get_price_for_product(p, tmpl_id, by_variant, by_template, global_item):
-    """Cascade: variant rule -> template rule -> global rule -> list_price."""
-    list_price = p["list_price"]
-    if p["id"] in by_variant:
-        return apply_price_rule(by_variant[p["id"]], list_price)
-    elif tmpl_id in by_template:
-        return apply_price_rule(by_template[tmpl_id], list_price)
-    elif global_item:
-        return apply_price_rule(global_item, list_price)
-    return list_price
+def get_prices_batch(models, uid, pl_id, variant_ids):
+    """Get prices for multiple products in one call using Odoo's native engine.
+    Returns dict {variant_id: price}.
+    """
+    try:
+        result = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "product.pricelist", "get_products_price",
+            [[pl_id]],
+            {"products": variant_ids,
+             "quantities": [1.0] * len(variant_ids),
+             "date": False})
+        # result may be {str(variant_id): price} or {int: price}
+        out = {}
+        for k, v in result.items():
+            out[int(k)] = float(v)
+        return out
+    except Exception:
+        pass
+    # Fallback: call one by one
+    out = {}
+    for vid in variant_ids:
+        p = get_price_native(models, uid, pl_id, vid)
+        if p is not None:
+            out[vid] = p
+    return out
 
 
 def get_all_packaging(models, uid):
@@ -220,25 +222,16 @@ def search_product():
         tmpl_id = p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list) else p.get("product_tmpl_id")
         uom     = p["uom_id"][1] if isinstance(p.get("uom_id"), list) else ""
 
-        # 2. Buscar tarifa por nombre (ilike = flexible a variaciones)
+        # 2. Buscar tarifa por nombre y calcular precio con motor nativo de Odoo
         pls = call(models, uid, "product.pricelist", "search_read",
             [[["name", "ilike", pricelist_name]]], {"fields": ["id"], "limit": 1})
 
         price = p["list_price"]
         if pls:
-            pl_id  = pls[0]["id"]
-            campos = {"fields": ["compute_price", "fixed_price", "percent_price",
-                                 "price_discount", "price_surcharge"], "limit": 1}
-            # Cascada: variante -> plantilla -> global
-            for domain in [
-                [["pricelist_id","=",pl_id], ["applied_on","=","0_product_variant"], ["product_id","=",p["id"]]],
-                [["pricelist_id","=",pl_id], ["applied_on","=","1_product"],         ["product_tmpl_id","=",tmpl_id]],
-                [["pricelist_id","=",pl_id], ["applied_on","=","3_global"]],
-            ]:
-                items = call(models, uid, "product.pricelist.item", "search_read", [domain], campos)
-                if items:
-                    price = apply_price_rule(items[0], p["list_price"])
-                    break
+            pl_id = pls[0]["id"]
+            native = get_price_native(models, uid, pl_id, p["id"])
+            if native is not None:
+                price = native
 
         # 3. Packaging (m2/caja)
         pkg_list = []
@@ -299,12 +292,7 @@ def catalog():
             if pls:
                 pl_ids[name] = pls[0]["id"]
 
-        # 2. Todos los items de cada tarifa en batch (1 llamada por tarifa)
-        pl_data = {}
-        for name, pl_id in pl_ids.items():
-            pl_data[name] = get_pricelist_items(models, uid, pl_id)
-
-        # 3. Todos los productos con stock > 0 (1 llamada)
+        # 2. Todos los productos con stock > 0 (1 llamada)
         productos = call(
             models, uid, "product.product", "search_read",
             [[["active", "=", True], ["default_code", "!=", False],
@@ -314,19 +302,26 @@ def catalog():
              "order": "default_code asc"}
         )
 
+        variant_ids = [p["id"] for p in productos]
+
+        # 3. Precios por tarifa usando motor nativo Odoo (1 llamada por tarifa)
+        pl_prices = {}
+        for name, pl_id in pl_ids.items():
+            pl_prices[name] = get_prices_batch(models, uid, pl_id, variant_ids)
+
         # 4. Todo el packaging en batch (1 llamada, try/except por si no existe)
         all_packaging = get_all_packaging(models, uid)
 
-        # 5. Calcular precios y armar respuesta (puro Python, sin queries extra)
+        # 5. Armar respuesta
         result = []
         for p in productos:
             tmpl_id = p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list) else p.get("product_tmpl_id")
             uom     = p["uom_id"][1] if isinstance(p.get("uom_id"), list) else ""
 
-            # Precio por tarifa (cascada Python, sin llamadas extra)
+            # Precio por tarifa (motor nativo Odoo)
             prices = {}
-            for name, (by_variant, by_template, global_item) in pl_data.items():
-                prices[name] = get_price_for_product(p, tmpl_id, by_variant, by_template, global_item)
+            for name in PRICELIST_NAMES:
+                prices[name] = pl_prices.get(name, {}).get(p["id"], p["list_price"])
 
             # Packaging
             m2_per_box, box_packaging_name = extract_m2_per_box(all_packaging.get(tmpl_id, []))
