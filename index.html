@@ -367,6 +367,7 @@
               <div style="display:flex;gap:5px;align-items:center">
                 <input id="prod-code" class="add-row-code" type="text" placeholder="EJ: CER-001" />
                 <button class="btn-pkg" onclick="addProduct()" title="Buscar y agregar">📦</button>
+                <button class="btn-pkg" onclick="openBarcodeScannerForCode()" title="Escanear código de barras">📷</button>
               </div>
             </td>
             <td><span style="color:var(--muted)">—</span></td>
@@ -887,8 +888,16 @@ function hideLoader() { document.getElementById('loader').classList.remove('show
 // ── Barcode scanner ───────────────────────────────────────────────────────────
 let _scanStream = null;
 let _scanRAF    = null;
+let _scanTarget = null; // 'prod-code' o 'cat-search'
+
+// Versión para el campo de código principal (tabla PRODUCTOS)
+function openBarcodeScannerForCode() {
+  _scanTarget = 'prod-code';
+  openBarcodeScanner();
+}
 
 async function openBarcodeScanner() {
+  _scanTarget = _scanTarget || 'cat-search';
   // Soporte: BarcodeDetector nativo (Chrome Android 88+)
   if (!('BarcodeDetector' in window)) {
     showToast('Tu navegador no soporta escaneo directo. Actualizá Chrome o usá el buscador manual.', 'error');
@@ -918,12 +927,19 @@ async function openBarcodeScanner() {
           const barcodes = await detector.detect(video);
           if (barcodes.length > 0) {
             const code = barcodes[0].rawValue;
+            const target = _scanTarget || 'cat-search';
             stopScanner();
-            // Llenar buscador del catálogo y filtrar
-            const searchInput = document.getElementById('cat-search');
-            searchInput.value = code;
-            filterCatalog();
-            showToast(`📦 Código escaneado: ${code}`, 'success');
+            if (target === 'prod-code') {
+              // Llenar campo de código y buscar producto directamente
+              document.getElementById('prod-code').value = code.toUpperCase();
+              document.getElementById('prod-code').focus();
+              addProduct();
+            } else {
+              // Llenar buscador del catálogo y filtrar
+              document.getElementById('cat-search').value = code;
+              filterCatalog();
+            }
+            showToast(`📷 Código escaneado: ${code}`, 'success');
             return;
           }
         } catch(_) { /* frame no procesable, ignorar */ }
@@ -947,6 +963,7 @@ function stopScanner() {
   if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; }
   const video = document.getElementById('scanner-video');
   if (video) video.srcObject = null;
+  _scanTarget = null;
   closeModal('modal-scanner');
 }
 
