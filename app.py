@@ -71,14 +71,19 @@ def get_price_from_pricelist(models, uid, pricelist_id, product_id, qty=1):
 
 
 def get_packaging(models, uid, product_tmpl_id):
-    """Obtiene packaging del producto (ej: caja con X m²)."""
-    packaging = models.execute_kw(
-        ODOO_DB, uid, ODOO_PASSWORD,
-        "product.packaging", "search_read",
-        [[["product_tmpl_id", "=", product_tmpl_id]]],
-        {"fields": ["id", "name", "qty", "product_uom_id"], "limit": 5}
-    )
-    return packaging
+    """Obtiene packaging del producto (ej: caja con X m²).
+    Retorna lista vacía si el modelo no existe en esta instalación de Odoo.
+    """
+    try:
+        packaging = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "product.packaging", "search_read",
+            [[["product_tmpl_id", "=", product_tmpl_id]]],
+            {"fields": ["id", "name", "qty", "product_uom_id"], "limit": 5}
+        )
+        return packaging
+    except Exception:
+        return []
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -142,7 +147,6 @@ def catalog():
                 pk_name_lower = (pk.get("name") or "").lower()
                 if any(x in pk_name_lower for x in ["caja", "box", "paq", "pack"]):
                     box_packaging = pk
-                    # qty en packaging indica cuántas unidades base trae la caja
                     m2_per_box = pk.get("qty")
                     break
 
@@ -246,7 +250,6 @@ def search_product():
     try:
         uid, models = odoo_connect()
 
-        # Buscar por código en variante o template
         variants = models.execute_kw(
             ODOO_DB, uid, ODOO_PASSWORD,
             "product.product", "search_read",
@@ -254,7 +257,6 @@ def search_product():
             {"fields": ["id", "name", "default_code", "product_tmpl_id", "image_128", "uom_id"], "limit": 1}
         )
         if not variants:
-            # Buscar en template
             templates = models.execute_kw(
                 ODOO_DB, uid, ODOO_PASSWORD,
                 "product.template", "search_read",
@@ -283,11 +285,9 @@ def search_product():
             image = v.get("image_128")
             uom = v["uom_id"][1] if v.get("uom_id") else ""
 
-        # Precio en la tarifa seleccionada
         pl_id = get_pricelist_id(models, uid, pricelist_name)
         price = get_price_from_pricelist(models, uid, pl_id, variant_id) if pl_id and variant_id else 0
 
-        # Precio por m² si aplica (packaging)
         packaging = get_packaging(models, uid, tmpl_id)
         m2_per_box = None
         box_name = None
@@ -302,11 +302,9 @@ def search_product():
         price_per_box = None
         if m2_per_box and m2_per_box > 0 and price > 0:
             if uom.lower() in ["m²", "m2", "metro cuadrado"]:
-                # precio ya es por m², calcular por caja
                 price_per_m2 = price
                 price_per_box = price * m2_per_box
             else:
-                # precio es por caja, calcular por m²
                 price_per_box = price
                 price_per_m2 = price / m2_per_box
 
@@ -339,7 +337,7 @@ def create_order():
     vendedor    = data.get("vendedor", "")
     cliente     = data.get("cliente", "")
     pricelist   = data.get("pricelist", PRICELISTS[0])
-    lines       = data.get("lines", [])  # [{variant_id, qty, price, name, code}]
+    lines       = data.get("lines", [])
     nota        = data.get("nota", "")
 
     if not lines:
@@ -348,10 +346,8 @@ def create_order():
     try:
         uid, models = odoo_connect()
 
-        # Tarifa
         pl_id = get_pricelist_id(models, uid, pricelist)
 
-        # Buscar o crear contacto genérico "Sucursal" si no existe cliente Odoo
         partner_ids = models.execute_kw(
             ODOO_DB, uid, ODOO_PASSWORD,
             "res.partner", "search",
@@ -361,14 +357,12 @@ def create_order():
         if partner_ids:
             partner_id = partner_ids[0]
         else:
-            # Crear cliente nuevo
             partner_id = models.execute_kw(
                 ODOO_DB, uid, ODOO_PASSWORD,
                 "res.partner", "create",
                 [{"name": cliente, "customer_rank": 1}]
             )
 
-        # Armar líneas del pedido
         order_lines = []
         for line in lines:
             order_lines.append((0, 0, {
@@ -377,7 +371,6 @@ def create_order():
                 "price_unit": line["price"],
             }))
 
-        # Nota interna: vendedor + nota del usuario
         note_parts = [f"Vendedor: {vendedor}"]
         if nota:
             note_parts.append(nota)
@@ -398,7 +391,6 @@ def create_order():
             [order_vals]
         )
 
-        # Obtener nombre del pedido
         order = models.execute_kw(
             ODOO_DB, uid, ODOO_PASSWORD,
             "sale.order", "read",
@@ -407,7 +399,6 @@ def create_order():
         )[0]
         order_name = order["name"]
 
-        # Notificación Telegram
         if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
             _send_telegram(vendedor, cliente, pricelist, lines, order_name)
 
@@ -445,7 +436,7 @@ def _send_telegram(vendedor, cliente, pricelist, lines, order_name):
             timeout=5,
         )
     except Exception:
-        pass  # No interrumpir el flujo si falla Telegram
+        pass
 
 
 if __name__ == "__main__":
