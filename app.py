@@ -95,7 +95,9 @@ def index():
 
 @app.route("/api/catalog")
 def catalog():
-    """Devuelve todos los productos activos con precios en ambas tarifas."""
+    """Devuelve todos los productos activos con precios en ambas tarifas.
+    Usa llamadas en batch para evitar N+1 queries y timeouts.
+    """
     try:
         uid, models = odoo_connect()
 
@@ -120,42 +122,94 @@ def catalog():
             }
         )
 
+        if not products:
+            return jsonify({"ok": True, "products": []})
+
+        product_tmpl_ids = [p["id"] for p in products]
+
+        # BATCH: obtener TODAS las variantes de una vez
+        all_variants = models.execute_kw(
+            ODOO_DB, uid, ODOO_PASSWORD,
+            "product.product", "search_read",
+            [[["product_tmpl_id", "in", product_tmpl_ids], ["active", "=", True]]],
+            {"fields": ["id", "default_code", "product_tmpl_id"], "limit": 2000}
+        )
+
+        # Mapa: tmpl_id -> primera variante
+        variant_map = {}
+        all_variant_ids = []
+        for v in all_variants:
+            raw = v.get("product_tmpl_id")
+            tmpl_id = raw[0] if isinstance(raw, list) else raw
+            if tmpl_id not in variant_map:
+                variant_map[tmpl_id] = v
+                all_variant_ids.append(v["id"])
+
+        # BATCH: obtener precios de TODAS las variantes por tarifa de una vez
+        price_map = {}  # {pl_name: {variant_id: price}}
+        for pl_name, pl_id in pricelist_ids.items():
+            try:
+                if all_variant_ids:
+                    results = models.execute_kw(
+                        ODOO_DB, uid, ODOO_PASSWORD,
+                        "product.product", "read",
+                        [all_variant_ids],
+                        {"fields": ["price"], "context": {"pricelist": pl_id, "quantity": 1}}
+                    )
+                    price_map[pl_name] = {r["id"]: r.get("price", 0) for r in results}
+                else:
+                    price_map[pl_name] = {}
+            except Exception:
+                price_map[pl_name] = {}
+
+        # BATCH: obtener TODOS los packagings de una vez
+        packaging_map = {}  # {tmpl_id: [list of packaging]}
+        try:
+            all_packaging = models.execute_kw(
+                ODOO_DB, uid, ODOO_PASSWORD,
+                "product.packaging", "search_read",
+                [[["product_tmpl_id", "in", product_tmpl_ids]]],
+                {"fields": ["id", "name", "qty", "product_uom_id", "product_tmpl_id"], "limit": 2000}
+            )
+            for pk in all_packaging:
+                raw_tmpl = pk.get("product_tmpl_id")
+                tmpl_id = raw_tmpl[0] if isinstance(raw_tmpl, list) else raw_tmpl
+                if tmpl_id not in packaging_map:
+                    packaging_map[tmpl_id] = []
+                packaging_map[tmpl_id].append(pk)
+        except Exception:
+            pass  # packaging no disponible en este Odoo
+
+        # Ensamblar catálogo en Python (sin más llamadas a Odoo)
         catalog_items = []
         for p in products:
-            # Obtener variante principal para precios
-            variants = models.execute_kw(
-                ODOO_DB, uid, ODOO_PASSWORD,
-                "product.product", "search_read",
-                [[["product_tmpl_id", "=", p["id"]], ["active", "=", True]]],
-                {"fields": ["id", "default_code"], "limit": 1}
-            )
-            if not variants:
+            tmpl_id = p["id"]
+            variant = variant_map.get(tmpl_id)
+            if not variant:
                 continue
-            variant_id = variants[0]["id"]
+            variant_id = variant["id"]
 
-            # Precios por tarifa
-            prices = {}
-            for pl_name, pl_id in pricelist_ids.items():
-                prices[pl_name] = get_price_from_pricelist(models, uid, pl_id, variant_id)
+            prices = {
+                pl_name: price_map.get(pl_name, {}).get(variant_id, 0)
+                for pl_name in PRICELISTS
+            }
 
-            # Packaging (m² por caja)
             uom_name = p["uom_id"][1] if p.get("uom_id") else ""
-            packaging = get_packaging(models, uid, p["id"])
+            packaging = packaging_map.get(tmpl_id, [])
             m2_per_box = None
             box_packaging = None
             for pk in packaging:
                 pk_name_lower = (pk.get("name") or "").lower()
                 if any(x in pk_name_lower for x in ["caja", "box", "paq", "pack"]):
                     box_packaging = pk
-                    # qty en packaging indica cuántas unidades base trae la caja
                     m2_per_box = pk.get("qty")
                     break
 
             item = {
-                "id": p["id"],
+                "id": tmpl_id,
                 "variant_id": variant_id,
                 "name": p["name"],
-                "code": p.get("default_code") or variants[0].get("default_code") or "",
+                "code": p.get("default_code") or variant.get("default_code") or "",
                 "image": p.get("image_128") or "",
                 "uom": uom_name,
                 "prices": prices,
@@ -385,74 +439,4 @@ def create_order():
         # Nota interna: vendedor + nota del usuario
         note_parts = [f"Vendedor: {vendedor}"]
         if nota:
-            note_parts.append(nota)
-        full_note = "\n".join(note_parts)
-
-        order_vals = {
-            "partner_id": partner_id,
-            "order_line": order_lines,
-            "note": full_note,
-            "state": "draft",
-        }
-        if pl_id:
-            order_vals["pricelist_id"] = pl_id
-
-        order_id = models.execute_kw(
-            ODOO_DB, uid, ODOO_PASSWORD,
-            "sale.order", "create",
-            [order_vals]
-        )
-
-        # Obtener nombre del pedido
-        order = models.execute_kw(
-            ODOO_DB, uid, ODOO_PASSWORD,
-            "sale.order", "read",
-            [order_id],
-            {"fields": ["name"]}
-        )[0]
-        order_name = order["name"]
-
-        # Notificación Telegram
-        if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-            _send_telegram(vendedor, cliente, pricelist, lines, order_name)
-
-        return jsonify({"ok": True, "order_id": order_id, "order_name": order_name})
-
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-def _send_telegram(vendedor, cliente, pricelist, lines, order_name):
-    """Envía notificación de nuevo pedido por Telegram."""
-    total = sum(l["price"] * l["qty"] for l in lines)
-    msg_lines = [
-        f"🛒 *Nuevo Pedido GONDER Sucursal* — {order_name}",
-        f"👤 Vendedor: {vendedor}",
-        f"🏢 Cliente: {cliente}",
-        f"💲 Tarifa: {pricelist}",
-        "",
-        "*Productos:*",
-    ]
-    for l in lines:
-        msg_lines.append(
-            f"  • [{l['code']}] {l['name']} — x{l['qty']} @ {l['price']:.2f}"
-        )
-    msg_lines.append(f"\n💰 *Total estimado: {total:.2f}*")
-
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={
-                "chat_id": TELEGRAM_CHAT_ID,
-                "text": "\n".join(msg_lines),
-                "parse_mode": "Markdown",
-            },
-            timeout=5,
-        )
-    except Exception:
-        pass  # No interrumpir el flujo si falla Telegram
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+     
