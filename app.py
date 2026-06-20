@@ -3,7 +3,7 @@ import xmlrpc.client
 import requests
 from flask import Flask, request, jsonify, render_template
 
-app = Flash(__name__)
+app = Flask(__name__)
 
 # ââ Credenciales Odoo (desde variables de entorno) âââââââââââââââââââââââââ
 ODOO_URL      = os.environ.get("ODOO_URL",      "https://gonder.odoo.com")
@@ -82,7 +82,7 @@ def apply_price_rule(item, base_price):
         pct = item.get("percent_price", 0.0)
         return base_price * (1.0 - pct / 100.0)
     elif cp == "formula":
-        disc     = item.get("price_discount", 0.0)
+        disc      = item.get("price_discount", 0.0)
         surcharge = item.get("price_surcharge", 0.0)
         return base_price * (1.0 - disc / 100.0) + surcharge
     return base_price
@@ -94,7 +94,6 @@ def get_price_for_product(variant_id, tmpl_id, categ_chain, list_price,
     """Cascada Odoo: variante â template â categoria (jerarquia) â global â list_price.
     base_pl_price: precio ya calculado de otra tarifa base (para reglas base='pricelist').
     """
-    # Encontrar la regla que aplica
     if variant_id in by_variant:
         item = by_variant[variant_id]
     elif tmpl_id in by_template:
@@ -111,7 +110,6 @@ def get_price_for_product(variant_id, tmpl_id, categ_chain, list_price,
     if item is None:
         return list_price
 
-    # Precio base segÃºn configuraciÃ³n de la regla
     base = item.get("base", "list_price")
     if base == "pricelist" and base_pl_price is not None:
         bp = base_pl_price
@@ -121,9 +119,33 @@ def get_price_for_product(variant_id, tmpl_id, categ_chain, list_price,
     return apply_price_rule(item, bp)
 
 
+def find_pricelist_by_name(pls_all, target_name, exclude_ids=None):
+    """Encuentra la tarifa que mejor corresponde a target_name.
+    Evita que "USD" matchee "USD BCV" usando prioridades:
+    1. Exact match (case-insensitive)
+    2. Nombre empieza con target + espacio o parentesis (ej "USD (USD)" para "USD")
+    3. Contiene target (ultimo recurso)
+    exclude_ids: IDs ya usados para evitar doble-match.
+    """
+    exclude_ids = exclude_ids or set()
+    tl = target_name.lower()
+    for pl in pls_all:
+        if pl["id"] not in exclude_ids and pl["name"].lower() == tl:
+            return pl
+    for pl in pls_all:
+        if pl["id"] not in exclude_ids:
+            nl = pl["name"].lower()
+            if nl.startswith(tl + " ") or nl.startswith(tl + "("):
+                return pl
+    for pl in pls_all:
+        if pl["id"] not in exclude_ids and tl in pl["name"].lower():
+            return pl
+    return None
+
+
 def build_categ_chains(models, uid, categ_ids):
     """Para un conjunto de categ_ids, construye {categ_id: [cid, parent, grandparent, ...]}.
-    Un fetch de todas las categorÃ­as evita N+1 queries.
+    Un fetch de todas las categorias evita N+1 queries.
     """
     if not categ_ids:
         return {}
@@ -208,83 +230,88 @@ def list_pricelists():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/api/debug_price")
-def debug_price():
-    """Debug completo: price_get, campos custom, todos los items de la tarifa."""
+@app.route("/api/debug_cascade")
+def debug_cascade():
+    """Debug de cascada: muestra que tarifa matchea, categ_chain, y precio calculado."""
     code = request.args.get("code", "").strip().upper()
     if not code:
         return jsonify({"ok": False, "error": "code requerido"}), 400
     try:
         uid, models = get_odoo()
 
-        # Producto
         variants = call(models, uid, "product.product", "search_read",
             [[["default_code", "=", code]]],
-            {"fields": ["id", "name", "list_price", "standard_price",
-                        "product_tmpl_id", "uom_id"], "limit": 1})
+            {"fields": ["id", "name", "list_price", "product_tmpl_id", "categ_id"], "limit": 1})
         if not variants:
-            return jsonify({"ok": False, "error": "Producto no encontrado"})
+            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
         p = variants[0]
-        tmpl_id = p["product_tmpl_id"][0] if isinstance(p["product_tmpl_id"], list) else p["product_tmpl_id"]
+        tmpl_id   = p["product_tmpl_id"][0] if isinstance(p["product_tmpl_id"], list) else p["product_tmpl_id"]
+        categ_raw = p.get("categ_id")
+        categ_id  = categ_raw[0] if isinstance(categ_raw, list) else categ_raw
+        categ_name = categ_raw[1] if isinstance(categ_raw, list) else ""
 
-        # Campos custom (x_*) del producto template
-        all_fields = models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD,
-            "product.template", "fields_get", [],
-            {"attributes": ["string", "type"]})
-        custom_fields = {k: v for k, v in all_fields.items() if k.startswith("x_")}
+        categ_chain_map = build_categ_chains(models, uid, {categ_id} if categ_id else {})
+        categ_chain = categ_chain_map.get(categ_id, [])
 
-        custom_vals = {}
-        if custom_fields:
-            tmpl_data = call(models, uid, "product.template", "read",
-                [[tmpl_id]], {"fields": list(custom_fields.keys())})
-            if tmpl_data:
-                custom_vals = {k: tmpl_data[0].get(k) for k in custom_fields}
+        pls_all = call(models, uid, "product.pricelist", "search_read",
+            [[]], {"fields": ["id", "name"]})
+        used_ids = set()
+        matched_pls = {}
+        for name in sorted(PRICELIST_NAMES, key=len, reverse=True):
+            m = find_pricelist_by_name(pls_all, name, used_ids)
+            if m:
+                matched_pls[name] = {"id": m["id"], "odoo_name": m["name"]}
+                used_ids.add(m["id"])
 
-        # Tarifas
-        pricelists = call(models, uid, "product.pricelist", "search_read",
-            [[]], {"fields": ["id", "name", "currency_id"]})
+        results = {}
+        usd_price = p["list_price"]
+        usd_key = next((n for n in PRICELIST_NAMES if n.upper() == "USD"), None)
 
-        # Para cada tarifa: price_get, get_product_price, todos los items
-        price_results = {}
-        for pl in pricelists:
-            pl_id = pl["id"]
-            entry = {"currency": pl.get("currency_id"), "price_get": None,
-                     "get_product_price": None, "all_items_count": 0}
+        for name, pl_info in matched_pls.items():
+            bv, bt, bc, gi = get_pricelist_items(models, uid, pl_info["id"])
+            bc_keys = list(bc.keys())
 
-            try:
-                r = models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD,
-                    "product.pricelist", "price_get",
-                    [[pl_id], p["id"], 1.0])
-                entry["price_get"] = r
-            except Exception as e:
-                entry["price_get"] = f"ERROR: {e}"
+            if p["id"] in bv:
+                rule_type = f"variant:{p['id']}"
+            elif tmpl_id in bt:
+                rule_type = f"template:{tmpl_id}"
+            else:
+                matched_cid = next((cid for cid in categ_chain if cid in bc), None)
+                if matched_cid:
+                    rule_type = f"category:{matched_cid}"
+                elif gi:
+                    rule_type = "global"
+                else:
+                    rule_type = "none->list_price"
 
-            try:
-                r2 = models.execute_kw(ODOO_DB, uid, ODOO_PASSWORD,
-                    "product.pricelist", "get_product_price",
-                    [[pl_id], p["id"], 1.0, False])
-                entry["get_product_price"] = r2
-            except Exception as e:
-                entry["get_product_price"] = f"ERROR: {e}"
+            price = get_price_for_product(p["id"], tmpl_id, categ_chain,
+                                          p["list_price"], bv, bt, bc, gi,
+                                          base_pl_price=(usd_price if name != usd_key else None))
+            if name == usd_key:
+                usd_price = price
 
-            all_items = call(models, uid, "product.pricelist.item", "search_read",
-                [[["pricelist_id", "=", pl_id]]],
-                {"fields": ["applied_on", "compute_price", "fixed_price",
-                            "percent_price", "price_discount", "price_surcharge",
-                            "base", "base_pricelist_id"]})
-            entry["all_items_count"] = len(all_items)
-            entry["all_items"] = all_items
-
-            price_results[pl["name"]] = entry
+            results[name] = {
+                "pl_id": pl_info["id"],
+                "odoo_name": pl_info["odoo_name"],
+                "by_category_keys": bc_keys,
+                "rule_matched": rule_type,
+                "categ_chain_intersect": [c for c in categ_chain if c in bc],
+                "price": price,
+            }
 
         return jsonify({
-            "product": p, "tmpl_id": tmpl_id,
-            "custom_fields": custom_fields,
-            "custom_values": custom_vals,
-            "price_results": price_results
+            "product_id": p["id"],
+            "tmpl_id": tmpl_id,
+            "list_price": p["list_price"],
+            "categ_id": categ_id,
+            "categ_name": categ_name,
+            "categ_chain": categ_chain,
+            "all_pricelists": [{"id": pl["id"], "name": pl["name"]} for pl in pls_all],
+            "pricelist_results": results,
         })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @app.route("/api/search_product")
@@ -313,28 +340,26 @@ def search_product():
         tmpl_id = p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list) else p.get("product_tmpl_id")
         uom     = p["uom_id"][1] if isinstance(p.get("uom_id"), list) else ""
 
-        # 2. Cascada manual de precios (Odoo 19 no tiene price_get ni get_product_price)
+        # 2. Cascada manual de precios (Odoo 19 no tiene price_get)
         categ_raw = p.get("categ_id")
         categ_id  = categ_raw[0] if isinstance(categ_raw, list) else categ_raw
         categ_chain = build_categ_chains(models, uid, {categ_id} if categ_id else {}).get(categ_id, [])
 
-        # Cargar items de la tarifa solicitada + USD (puede ser base)
         pls_all = call(models, uid, "product.pricelist", "search_read",
             [[]], {"fields": ["id", "name"]})
-        pl_map = {pl["name"]: pl["id"] for pl in pls_all}
 
-        # IDs de tarifas base posibles
-        usd_pl_id = pl_map.get("USD") or pl_map.get("USD (USD)")
-        target_pl_id = None
-        for n, i in pl_map.items():
-            if pricelist_name.lower() in n.lower():
-                target_pl_id = i
-                break
+        # Match exacto primero (evita "USD" matchear "USD BCV")
+        target_pl = find_pricelist_by_name(pls_all, pricelist_name)
+        target_pl_id = target_pl["id"] if target_pl else None
+
+        # Buscar USD excluyendo la tarifa ya encontrada
+        usd_pl = find_pricelist_by_name(pls_all, "USD",
+                                         exclude_ids={target_pl_id} if target_pl_id else set())
+        usd_pl_id = usd_pl["id"] if usd_pl else None
 
         price = p["list_price"]
         if target_pl_id:
             bv, bt, bc, gi = get_pricelist_items(models, uid, target_pl_id)
-            # Precio USD como base (por si la tarifa referencia a USD)
             usd_price = None
             if usd_pl_id and usd_pl_id != target_pl_id:
                 bv_u, bt_u, bc_u, gi_u = get_pricelist_items(models, uid, usd_pl_id)
@@ -390,21 +415,22 @@ def search_product():
 
 @app.route("/api/catalog")
 def catalog():
-    """Devuelve todos los productos en stock con precios para ambas tarifas.
-    Usa batch product.pricelist.item + cascada en Python â sin N+1 queries.
-    """
+    """Devuelve todos los productos en stock con precios para ambas tarifas."""
     try:
         uid, models = get_odoo()
 
-        # 1. IDs de ambas tarifas (2 llamadas)
+        # 1. IDs de ambas tarifas (match exacto â evita "USD" â "USD BCV")
+        pls_all_cat = call(models, uid, "product.pricelist", "search_read",
+            [[]], {"fields": ["id", "name"]})
         pl_ids = {}
-        for name in PRICELIST_NAMES:
-            pls = call(models, uid, "product.pricelist", "search_read",
-                [[["name", "ilike", name]]], {"fields": ["id", "name"], "limit": 1})
-            if pls:
-                pl_ids[name] = pls[0]["id"]
+        used_ids = set()
+        for name in sorted(PRICELIST_NAMES, key=len, reverse=True):
+            match = find_pricelist_by_name(pls_all_cat, name, used_ids)
+            if match:
+                pl_ids[name] = match["id"]
+                used_ids.add(match["id"])
 
-        # 2. Todos los productos con stock > 0 (1 llamada)
+        # 2. Todos los productos con stock > 0
         productos = call(
             models, uid, "product.product", "search_read",
             [[["active", "=", True], ["default_code", "!=", False],
@@ -419,7 +445,7 @@ def catalog():
         for name, pl_id in pl_ids.items():
             pl_items[name] = get_pricelist_items(models, uid, pl_id)
 
-        # 4. JerarquÃ­a de categorÃ­as para todos los productos (1 fetch de todas las cats)
+        # 4. Jerarquia de categorias (1 fetch de todas las cats)
         all_categ_ids = set()
         for p in productos:
             cid = p.get("categ_id")
@@ -427,13 +453,9 @@ def catalog():
                 all_categ_ids.add(cid[0] if isinstance(cid, list) else cid)
         categ_chains = build_categ_chains(models, uid, all_categ_ids)
 
-        # USD se usa como base para reglas USD BCV con base='pricelist'
         usd_items = pl_items.get("USD")
-
-        # 5. Todo el packaging en batch (1 llamada, try/except por si no existe)
         all_packaging = get_all_packaging(models, uid)
 
-        # 6. Armar respuesta
         result = []
         for p in productos:
             tmpl_id = p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list) else p.get("product_tmpl_id")
@@ -443,17 +465,183 @@ def catalog():
             categ_id  = categ_raw[0] if isinstance(categ_raw, list) else categ_raw
             categ_chain = categ_chains.get(categ_id, [categ_id] if categ_id else [])
 
-            # Calcular USD primero (puede ser base para USD BCV)
             usd_price = p["list_price"]
             if usd_items:
                 bv, bt, bc, gi = usd_items
                 usd_price = get_price_for_product(
                     p["id"], tmpl_id, categ_chain, p["list_price"], bv, bt, bc, gi)
 
-            # Calcular resto de tarifas
             prices = {}
             for name, items_tuple in pl_items.items():
                 bv, bt, bc, gi = items_tuple
                 if name == "USD":
                     prices[name] = usd_price
-     
+                else:
+                    prices[name] = get_price_for_product(
+                        p["id"], tmpl_id, categ_chain, p["list_price"],
+                        bv, bt, bc, gi, base_pl_price=usd_price)
+
+            m2_per_box, box_packaging_name = extract_m2_per_box(all_packaging.get(tmpl_id, []))
+
+            imagen = p.get("image_128")
+            result.append({
+                "id":                 tmpl_id,
+                "variant_id":         p["id"],
+                "code":               p["default_code"],
+                "name":               p["name"],
+                "uom":                uom,
+                "prices":             prices,
+                "image":              imagen if imagen else None,
+                "m2_per_box":         m2_per_box,
+                "box_packaging_name": box_packaging_name,
+            })
+
+        return jsonify({"ok": True, "products": result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/product/<int:tmpl_id>")
+def product_detail(tmpl_id):
+    """Ficha tecnica completa de un producto (por template ID)."""
+    try:
+        uid, models = get_odoo()
+
+        tmpl = call(models, uid, "product.template", "read",
+            [[tmpl_id]],
+            {"fields": ["name", "default_code", "image_512", "uom_id",
+                        "description_sale", "attribute_line_ids"]})
+        if not tmpl:
+            return jsonify({"ok": False, "error": "Producto no encontrado"}), 404
+        t = tmpl[0]
+
+        uom  = t["uom_id"][1] if isinstance(t.get("uom_id"), list) else ""
+        code = t.get("default_code") or ""
+
+        if not code:
+            vars_ = call(models, uid, "product.product", "search_read",
+                [[["product_tmpl_id", "=", tmpl_id], ["active", "=", True]]],
+                {"fields": ["default_code"], "limit": 1})
+            if vars_:
+                code = vars_[0].get("default_code") or ""
+
+        attrs = []
+        if t.get("attribute_line_ids"):
+            attr_lines = call(models, uid, "product.template.attribute.line", "read",
+                [t["attribute_line_ids"]],
+                {"fields": ["attribute_id", "value_ids"]})
+            for line in attr_lines:
+                attr_name = line["attribute_id"][1] if isinstance(line["attribute_id"], list) else str(line["attribute_id"])
+                if line.get("value_ids"):
+                    values = call(models, uid, "product.attribute.value", "read",
+                        [line["value_ids"]], {"fields": ["name"]})
+                    attrs.append({"attr": attr_name, "values": [v["name"] for v in values]})
+
+        packaging = []
+        try:
+            packs = call(models, uid, "product.packaging", "search_read",
+                [[["product_tmpl_id", "=", tmpl_id]]],
+                {"fields": ["name", "qty"], "limit": 5})
+            packaging = [{"name": pk["name"], "qty": pk["qty"]} for pk in packs]
+        except Exception:
+            pass
+
+        imagen = t.get("image_512")
+
+        return jsonify({
+            "ok": True,
+            "product": {
+                "name":        t["name"],
+                "code":        code,
+                "uom":         uom,
+                "description": t.get("description_sale") or "",
+                "image":       imagen if imagen else None,
+                "attributes":  attrs,
+                "packaging":   packaging,
+            }
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/create_order", methods=["POST"])
+def create_order():
+    """Crea el borrador de pedido en Odoo y notifica por Telegram."""
+    data           = request.json or {}
+    vendedor       = data.get("vendedor", "").strip()
+    cliente        = data.get("cliente", "").strip()
+    pricelist_name = data.get("pricelist", "USD BCV")
+    nota           = data.get("nota", "")
+    lines          = data.get("lines", [])
+
+    if not vendedor:
+        return jsonify({"ok": False, "error": "Vendedor requerido"}), 400
+    if not cliente:
+        return jsonify({"ok": False, "error": "Cliente requerido"}), 400
+    if not lines:
+        return jsonify({"ok": False, "error": "El pedido no tiene productos"}), 400
+
+    try:
+        uid, models = get_odoo()
+
+        partners = call(models, uid, "res.partner", "search",
+            [[["name", "ilike", cliente]]], {"limit": 1})
+        if partners:
+            partner_id = partners[0]
+        else:
+            partner_id = call(models, uid, "res.partner", "create",
+                [{"name": cliente, "customer_rank": 1}])
+
+        pls = call(models, uid, "product.pricelist", "search_read",
+            [[["name", "ilike", pricelist_name]]], {"fields": ["id"], "limit": 1})
+        pricelist_id = pls[0]["id"] if pls else False
+
+        order_lines = []
+        subtotal    = 0.0
+        for line in lines:
+            order_lines.append((0, 0, {
+                "product_id":      line["variant_id"],
+                "name":            line["name"],
+                "product_uom_qty": line["qty"],
+                "price_unit":      line["price"],
+            }))
+            subtotal += line["qty"] * line["price"]
+
+        order_vals = {
+            "partner_id":       partner_id,
+            "client_order_ref": vendedor,
+            "order_line":       order_lines,
+            "note":             nota,
+        }
+        if pricelist_id:
+            order_vals["pricelist_id"] = pricelist_id
+
+        order_id = call(models, uid, "sale.order", "create", [order_vals])
+
+        order_data = call(models, uid, "sale.order", "read",
+            [[order_id]], {"fields": ["name"]})
+        order_name = order_data[0]["name"] if order_data else str(order_id)
+
+        lines_text = "\n".join(
+            f"  - {l['code']} x{l['qty']} @ {l['price']:.2f}" for l in lines
+        )
+        msg = (
+            f"<b>Nuevo Pedido GONDER</b>\n"
+            f"<b>Vendedor:</b> {vendedor}\n"
+            f"<b>Cliente:</b> {cliente}\n"
+            f"<b>Tarifa:</b> {pricelist_name}\n"
+            f"<b>Referencia:</b> {order_name}\n"
+            f"<b>Total:</b> {subtotal:,.2f}\n\n"
+            f"<b>Productos:</b>\n{lines_text}"
+        )
+        if nota:
+            msg += f"\n\n<b>Nota:</b> {nota}"
+        send_telegram(msg)
+
+        return jsonify({"ok": True, "order_name": order_name})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
