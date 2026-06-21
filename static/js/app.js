@@ -101,7 +101,10 @@
     el('config-error-main').classList.add('hidden');
 
     try {
-      const d = await fetch('/api/listas-precio').then(r => r.json());
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const d = await fetch('/api/listas-precio', { signal: ctrl.signal }).then(r => r.json());
+      clearTimeout(timer);
       if (d.error) throw new Error(d.error);
 
       const opts = d.listas.map(l =>
@@ -118,19 +121,24 @@
     } catch (e) {
       el('config-loading').classList.add('hidden');
       el('config-error-main').classList.remove('hidden');
-      el('config-error-main').textContent = '⚠️ Error conectando con Odoo: ' + e.message;
+      el('config-error-main').innerHTML =
+        '⚠️ No se pudo conectar con Odoo.<br>' +
+        '<button onclick="GonderApp.saltarConfig()" ' +
+        'style="margin-top:12px;padding:10px 20px;background:#F2C200;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px;">' +
+        'Continuar sin listas de precio</button>';
     }
   }
 
   function guardarConfig() {
-    const plE = parseInt(el('sel-estandar').value);
-    const plB = parseInt(el('sel-bcv').value);
-    if (!plE || !plB) {
-      el('config-error').classList.remove('hidden');
-      el('config-error').textContent = 'Selecciona ambas listas de precio.';
-      return;
-    }
+    const plE = parseInt(el('sel-estandar').value) || null;
+    const plB = parseInt(el('sel-bcv').value) || null;
     config = { plEstandar: plE, plBCV: plB };
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    mostrarApp();
+  }
+
+  function saltarConfig() {
+    config = { plEstandar: null, plBCV: null };
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
     mostrarApp();
   }
@@ -549,9 +557,4 @@
               <span class="text-[10px] text-gray-500"><span class="badge-e">USD</span> Precio ${escHtml(emb.nombre)}</span>
               <span class="text-emerald-500 font-bold text-sm">${fUSD(peEmb)}</span>
             </div>
-            <div class="flex justify-between items-center mb-1.5">
-              <span class="text-[10px] text-gray-500"><span class="badge-b">BCV</span> Precio ${escHtml(emb.nombre)}</span>
-              <span class="text-blue-500 font-bold text-sm">${fUSD(pbEmb)}</span>
-              <span class="text-blue-500 font-bold text-sm">${fUSD(pbEmb)}</span>
-            span class="text-[10px] text-gray-500"><span class="badge-b">BCV</span> en Bs.</span>
-              <span clas
+            <div class="flex justify-between items-center mb-1
