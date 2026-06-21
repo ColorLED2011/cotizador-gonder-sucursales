@@ -1,0 +1,33 @@
+# ─── Render.com — Configuración de despliegue ──────────────────────────────
+# Documentación: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: cotizador-gonder
+    runtime: python
+    region: ohio           # Cambiar según preferencia: ohio | oregon | frankfurt | singapore
+    plan: free             # free | starter | standard | pro
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60 --log-level info
+    healthCheckPath: /api/ping
+    autoDeploy: true       # Deploy automático al hacer push a la rama principal
+
+    envVars:
+      # ── IMPORTANTE: Configurar estos valores en el Dashboard de Render ────
+      # Nunca escribir los valores reales aquí — usar el panel de secretos.
+      - key: ODOO_URL
+        sync: false        # sync: false = Render pide el valor al operador manualmente
+      - key: ODOO_DB
+        sync: false
+      - key: ODOO_USER
+        sync: false
+      - key: ODOO_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true  # Render genera una clave aleatoria automáticamente
+      - key: APP_PASSWORD
+        sync: false          # Clave de acceso que usarán los vendedores
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.12.0"
