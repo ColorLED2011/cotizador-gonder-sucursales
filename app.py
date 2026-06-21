@@ -9,12 +9,11 @@ import re
 import time
 import logging
 import xmlrpc.client
-from functools import wraps
 from threading import Lock, Thread
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, jsonify, render_template, request, session, redirect, url_for
+from flask import Flask, jsonify, render_template, request
 from dotenv import load_dotenv
 
 # ─── Configuración inicial ────────────────────────────────────────────────────
@@ -33,42 +32,6 @@ ODOO_URL      = os.environ.get("ODOO_URL", "")
 ODOO_DB       = os.environ.get("ODOO_DB", "")
 ODOO_USER     = os.environ.get("ODOO_USER", "")
 ODOO_PASSWORD = os.environ.get("ODOO_PASSWORD", "")
-SECRET_KEY    = os.environ.get("SECRET_KEY", "gonder-secret-2025")
-APP_PASSWORD  = os.environ.get("APP_PASSWORD", "")
-
-app.secret_key = SECRET_KEY
-
-# ─── Login / Acceso ──────────────────────────────────────────────────────────
-def login_required(f):
-    """Decorador: redirige al login si el vendedor no está autenticado."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if APP_PASSWORD and not session.get("autenticado"):
-            # Las llamadas API devuelven 401 en vez de redirigir
-            if request.path.startswith("/api/"):
-                return jsonify({"error": "No autorizado"}), 401
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return decorated
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    error = None
-    if request.method == "POST":
-        clave = request.form.get("clave", "").strip()
-        if clave == APP_PASSWORD:
-            session["autenticado"] = True
-            session.permanent = True
-            return redirect(url_for("index"))
-        error = "Clave incorrecta. Intenta de nuevo."
-    return render_template("login.html", error=error)
-
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
 
 
 # ─── Cache de tasa BCV ───────────────────────────────────────────────────────
@@ -236,13 +199,13 @@ def _build_producto_dict(p: dict, pl_estandar: int | None, pl_bcv: int | None, t
 # ─── API ENDPOINTS ────────────────────────────────────────────────────────────
 
 @app.route("/")
-@login_required
+
 def index():
     return render_template("index.html")
 
 
 @app.route("/api/listas-precio")
-@login_required
+
 def api_listas_precio():
     """Devuelve todas las listas de precio activas del Odoo del cliente."""
     try:
@@ -259,7 +222,7 @@ def api_listas_precio():
 
 
 @app.route("/api/tasa")
-@login_required
+
 def api_tasa():
     """Devuelve la tasa BCV del día."""
     tasa = get_tasa_bcv()
@@ -272,15 +235,15 @@ def api_tasa():
 
 
 @app.route("/api/productos")
-@login_required
+
 def api_productos():
     """
     Busca productos por nombre, código de barras, o devuelve catálogo completo.
     Query params:
       q           — texto libre (nombre / código interno)
-      barcode     — código de barras exacto
-      catalogo    — "1" para listar todos (sin q ni barcode)
-      limit       — máximo de resultados (default 30; catálogo default 60)
+      barcode      — código de barras exacto
+      catalogo     — "1" para listar todos (sin q ni barcode)
+      limit        — máximo de resultados (default 30; catálogo default 60)
       pl_estandar — ID de lista de precio Estándar (elegida en la UI)
       pl_bcv      — ID de lista de precio BCV      (elegida en la UI)
     """
@@ -328,7 +291,7 @@ def api_productos():
 
 
 @app.route("/api/producto/<int:product_id>")
-@login_required
+
 def api_producto_detalle(product_id):
     """
     Detalle completo de un producto para la ficha del catálogo.
@@ -397,7 +360,7 @@ def api_producto_detalle(product_id):
 
 
 @app.route("/api/orden", methods=["POST"])
-@login_required
+
 def api_crear_orden():
     """
     Crea un sale.order en Odoo en estado Borrador usando la Tarifa BCV.
@@ -414,100 +377,4 @@ def api_crear_orden():
         "notas": "Texto libre"
     }
     """
-    data = request.get_json(force=True)
-
-    vendedor   = data.get("vendedor", "").strip()
-    cliente_id = data.get("cliente_id")
-    pl_bcv     = data.get("pl_bcv")
-    items      = data.get("items", [])
-    notas      = data.get("notas", "")
-
-    if not cliente_id or not items:
-        return jsonify({"error": "cliente_id e items son obligatorios"}), 400
-
-    try:
-        order_vals = {
-            "partner_id":       cliente_id,
-            "client_order_ref": vendedor,
-            "state":            "draft",
-            "note":             notas,
-        }
-        if pl_bcv:
-            order_vals["pricelist_id"] = int(pl_bcv)
-
-        order_id = odoo_call("sale.order", "create", [order_vals])
-
-        for item in items:
-            odoo_call("sale.order.line", "create", [{
-                "order_id":        order_id,
-                "product_id":      item["product_id"],
-                "product_uom_qty": float(item.get("qty", 1)),
-                "price_unit":      float(item.get("precio_bcv", 0)),
-            }])
-
-        return jsonify({
-            "ok":       True,
-            "order_id": order_id,
-            "mensaje":  f"Pedido #{order_id} creado en Odoo (Borrador, Tarifa BCV).",
-        })
-
-    except Exception as exc:
-        log.error("Error creando orden: %s", exc)
-        return jsonify({"error": str(exc)}), 500
-
-
-@app.route("/api/clientes")
-@login_required
-def api_clientes():
-    """Busca clientes/partners en Odoo. Param: q"""
-    q = request.args.get("q", "").strip()
-    if not q:
-        return jsonify({"clientes": []})
-
-    try:
-        clientes = odoo_call(
-            "res.partner",
-            "search_read",
-            [[["name", "ilike", q], ["customer_rank", ">", 0]]],
-            {"fields": ["id", "name", "vat", "phone"], "limit": 15},
-        )
-        return jsonify({"clientes": clientes})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
-
-# ─── Salud del servicio ───────────────────────────────────────────────────────
-@app.route("/api/ping")
-def ping():
-    return jsonify({"status": "ok", "app": "Cotizador GONDER"})
-
-
-# ─── Keep-alive para Render Free ─────────────────────────────────────────────
-def _keep_alive():
-    time.sleep(60)
-    app_url = os.environ.get("RENDER_EXTERNAL_URL", "")
-    if not app_url:
-        log.info("Keep-alive: RENDER_EXTERNAL_URL no definida — omitido (entorno local).")
-        return
-
-    ping_url = f"{app_url}/api/ping"
-    log.info("Keep-alive activo → %s (cada 14 min)", ping_url)
-
-    while True:
-        try:
-            r = requests.get(ping_url, timeout=10)
-            log.info("Keep-alive ping OK — status %s", r.status_code)
-        except Exception as exc:
-            log.warning("Keep-alive ping falló: %s", exc)
-        time.sleep(14 * 60)
-
-
-# ─── Punto de entrada ─────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    if os.environ.get("RENDER_EXTERNAL_URL"):
-        t = Thread(target=_keep_alive, daemon=True)
-        t.start()
-
-    port  = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_ENV", "production") == "development"
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    
