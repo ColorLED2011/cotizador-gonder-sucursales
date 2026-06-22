@@ -302,29 +302,61 @@ def api_productos():
 
         tasa = get_tasa_bcv()
 
-        # ── Batch price lookup (evita N llamadas a Odoo, una sola por lista) ──
-        def _batch_precios(pl_id, prod_ids):
+        # ── Batch price lookup: fijo (variante/plantilla) + % por categoría ──
+        def _batch_precios(pl_id, prod_ids, tmpl_ids, categ_ids, lst_prices):
             if not pl_id or not prod_ids:
                 return {}
             try:
                 items = odoo_call(
                     "product.pricelist.item", "search_read",
-                    [[["pricelist_id", "=", pl_id], ["product_id", "in", prod_ids]]],
-                    {"fields": ["product_id", "fixed_price", "compute_price"],
-                     "limit": len(prod_ids) * 3},
+                    [[["pricelist_id", "=", pl_id]]],
+                    {"fields": ["product_id", "product_tmpl_id", "categ_id",
+                                "fixed_price", "compute_price",
+                                "percent_price", "applied_on"],
+                     "limit": 1000},
                 )
-                return {
-                    item["product_id"][0]: item["fixed_price"]
-                    for item in items
-                    if item.get("compute_price") == "fixed" and item.get("product_id")
-                }
             except Exception:
                 return {}
 
-        prod_ids  = [p["id"] for p in productos_raw]
-        tmpl_ids  = [p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list) else (p.get("product_tmpl_id") or 0) for p in productos_raw]
-        pe_map = _batch_precios(pl_estandar, prod_ids, tmpl_ids)
-        pb_map = _batch_precios(pl_bcv,      prod_ids, tmpl_ids)
+            result  = {}
+            cat_pct = {}   # categ_id → percent_price
+
+            for item in items:
+                cp  = item.get("compute_price", "")
+                aon = item.get("applied_on", "")
+
+                if aon == "0_product_variant" and item.get("product_id") and cp == "fixed":
+                    pid = item["product_id"][0]
+                    if pid in prod_ids and pid not in result:
+                        result[pid] = item["fixed_price"]
+
+                elif aon == "1_product" and item.get("product_tmpl_id") and cp == "fixed":
+                    tid = item["product_tmpl_id"][0]
+                    for p_id, t_id in zip(prod_ids, tmpl_ids):
+                        if t_id == tid and p_id not in result:
+                            result[p_id] = item["fixed_price"]
+
+                elif aon == "2_product_category" and item.get("categ_id") and cp == "percentage":
+                    cid = item["categ_id"][0]
+                    if cid not in cat_pct:
+                        cat_pct[cid] = item["percent_price"]
+
+            for p_id, c_id, base in zip(prod_ids, categ_ids, lst_prices):
+                if p_id not in result and c_id in cat_pct:
+                    pct = cat_pct[c_id]
+                    result[p_id] = round(base * (1 - pct / 100), 4)
+
+            return result
+
+        prod_ids   = [p["id"] for p in productos_raw]
+        tmpl_ids   = [(p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list)
+                       else p.get("product_tmpl_id") or 0) for p in productos_raw]
+        categ_ids  = [(p["categ_id"][0] if isinstance(p.get("categ_id"), list)
+                       else p.get("categ_id") or 0) for p in productos_raw]
+        lst_prices = [p["lst_price"] for p in productos_raw]
+
+        pe_map = _batch_precios(pl_estandar, prod_ids, tmpl_ids, categ_ids, lst_prices)
+        pb_map = _batch_precios(pl_bcv,      prod_ids, tmpl_ids, categ_ids, lst_prices)
 
         resultado = []
         for p in productos_raw:
