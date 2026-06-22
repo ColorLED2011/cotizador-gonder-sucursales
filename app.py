@@ -278,7 +278,7 @@ def api_productos():
             {
                 "fields": [
                     "id", "name", "default_code", "barcode",
-                    "lst_price", "uom_id", "image_128",
+                    "lst_price", "uom_id", "image_128", "product_tmpl_id",
                 ],
                 "limit": limit,
                 "order": "name asc",
@@ -306,9 +306,10 @@ def api_productos():
             except Exception:
                 return {}
 
-        prod_ids = [p["id"] for p in productos_raw]
-        pe_map = _batch_precios(pl_estandar, prod_ids)
-        pb_map = _batch_precios(pl_bcv, prod_ids)
+        prod_ids  = [p["id"] for p in productos_raw]
+        tmpl_ids  = [p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list) else (p.get("product_tmpl_id") or 0) for p in productos_raw]
+        pe_map = _batch_precios(pl_estandar, prod_ids, tmpl_ids)
+        pb_map = _batch_precios(pl_bcv,      prod_ids, tmpl_ids)
 
         resultado = []
         for p in productos_raw:
