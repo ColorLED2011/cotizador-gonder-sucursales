@@ -11,15 +11,15 @@
   const DEBOUNCE_MS = 350;
 
   // ── Estado global ────────────────────────────────────────────────────────────
-  let carrito      = [];
-  let tasaBCV      = 0;
-  let config       = { plEstandar: null, plBCV: null };
-  let scanner      = null;
-  let scannerMode  = 'cart';   // 'cart' | 'catalog'
-  let clienteId    = null;
-  let catProductos = [];       // catálogo completo para filtrar localmente
-  let buscarTimer  = null;
-  let clienteTimer = null;
+  let carrito       = [];
+  let tasaBCV       = 0;
+  let config        = { plEstandar: null, plBCV: null };
+  let scanner       = null;
+  let scannerMode   = 'cart';   // 'cart' | 'catalog'
+  let clienteId     = null;
+  let catProductos  = [];       // catálogo completo para filtrar localmente
+  let buscarTimer   = null;
+  let clienteTimer  = null;
 
   // ── Caché de productos (para evitar pasar JSON en onclick) ───────────────────
   const _prodCache    = {};   // id → producto (buscador / catálogo)
@@ -75,17 +75,19 @@
   }
 
   async function _cargarListasFondo() {
+    // Si ya hay config guardada no molestar
     if (config.plEstandar && config.plBCV) return;
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 8000);
-      const resp = await fetch('/api/listas-precio', { signal: ctrl.signal }).then(x => x.json());
+      const d = await fetch('/api/listas-precio', { signal: ctrl.signal }).then(r => r.json());
       clearTimeout(timer);
-      if (resp.error || !resp.listas?.length) return;
-      if (!config.plEstandar) config.plEstandar = resp.listas[0].id;
-      if (!config.plBCV)      config.plBCV      = resp.listas[0].id;
+      if (d.error || !d.listas?.length) return;
+      // Guardar la primera lista como predeterminada si no hay config
+      if (!config.plEstandar) config.plEstandar = d.listas[0].id;
+      if (!config.plBCV)      config.plBCV      = d.listas[0].id;
       localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-    } catch { /* sin conexion Odoo */ }
+    } catch { /* Odoo no disponible – continuar sin listas */ }
   }
 
   function mostrarApp() {
@@ -453,7 +455,7 @@
     const sep = '─'.repeat(28);
     const msg = [
       `🧾 *COTIZACIÓN GONDER*`,
-      `📅 ${hoy}`,
+      `📑 ${hoy}`,
       ``,
       `👤 *Vendedor:* ${vendedor}`,
       `🏪 *Cliente:* ${cliente}${cedula ? ' | ' + cedula : ''}`,
@@ -558,17 +560,104 @@
       const bloquesEmb = (p.embalajes || []).map(emb => {
         const peEmb = p.precio_estandar * emb.qty;
         const pbEmb = p.precio_bcv      * emb.qty;
-        const bsEmb = p.precio_bcv_bs   * emb.qty;
+        const bsEmb = p.precio_bcv_bs  * emb.qty;
         return `
           <div class="bg-white rounded-xl border border-gray-100 p-3">
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-              🗃️ Por ${escHtml(emb.nombre)}
-            </div>
-            <div class="inline-flex items-center bg-yellow-50 border border-yellow-200 rounded px-2 py-0.5 mb-2">
-              <span class="text-[9px] font-bold text-yellow-800">x${emb.qty} ${escHtml(p.uom)}</span>
+            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+              📦 ${escHtml(emb.nombre)} · ${emb.qty} ${escHtml(p.uom)}
             </div>
             <div class="flex justify-between items-center mb-1.5">
-              <span class="text-[10px] text-gray-500"><span class="badge-e">USD</span> Precio ${escHtml(emb.nombre)}</span>
+              <span class="text-[10px] text-gray-500"><span class="badge-e">USD</span> Precio</span>
               <span class="text-emerald-500 font-bold text-sm">${fUSD(peEmb)}</span>
             </div>
-            <div class="flex justify-between items-center mb-1
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="text-[10px] text-gray-500"><span class="badge-b">BCV</span> Precio</span>
+              <span class="text-blue-500 font-bold text-sm">${fUSD(pbEmb)}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-[10px] text-gray-500"><span class="badge-b">BCV</span> en Bs.</span>
+              <span class="text-blue-700 font-semibold text-xs">${fBs(bsEmb)}</span>
+            </div>
+          </div>`;
+      }).join('');
+
+      el('ficha-body').innerHTML = `
+        ${p.imagen
+          ? `<img src="data:image/png;base64,${p.imagen}" class="ficha-img" alt=""/>`
+          : '<div class="ficha-img-placeholder"><span style="font-size:48px">📦</span></div>'}
+        <div class="px-1 space-y-3">
+          <div>
+            <div class="text-xs font-bold text-gray-800 leading-tight">${escHtml(p.nombre)}</div>
+            ${p.descripcion ? `<div class="text-[10px] text-gray-500 mt-1">${escHtml(p.descripcion)}</div>` : ''}
+          </div>
+          ${bloqueUnidad}
+          ${bloquesEmb}
+        </div>`;
+
+    } catch (e) {
+      el('ficha-body').innerHTML =
+        `<div class="text-center py-8 text-red-400 text-xs">&#9888; ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  // ── Scanner ───────────────────────────────────────────────────────────────────
+  function abrirScanner(mode) {
+    scannerMode = mode || 'cart';
+    el('scanner-overlay').classList.add('open');
+    if (!scanner) {
+      scanner = new Html5Qrcode('reader');
+    }
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 100 } },
+      (code) => {
+        cerrarScanner();
+        if (scannerMode === 'catalog') {
+          filtrarCatalogo(code);
+          goTo('scr-catalogo');
+        } else {
+          el('inp-buscar').value = code;
+          buscarProducto(code);
+        }
+      },
+      () => {}
+    ).catch(() => {
+      toast('Error al acceder a la camara', '#ef4444');
+      cerrarScanner();
+    });
+  }
+
+  function cerrarScanner() {
+    el('scanner-overlay').classList.remove('open');
+    if (scanner) {
+      scanner.stop().catch(() => {});
+      scanner = null;
+    }
+  }
+
+  // ── Exportar API publica ──────────────────────────────────────────────────────
+  window.GonderApp = {
+    init,
+    goTo,
+    mostrarConfig,
+    guardarConfig,
+    saltarConfig,
+    buscarCliente,
+    seleccionarCliente,
+    buscarProducto,
+    agregarPorId,
+    agregarDesdeFicha,
+    cambiarCantidad,
+    setQty,
+    eliminarDelCarrito,
+    nuevoPedido,
+    confirmarPedido,
+    enviarWhatsApp,
+    filtrarCatalogo,
+    verFicha,
+    abrirScanner,
+    cerrarScanner,
+  };
+
+  document.addEventListener('DOMContentLoaded', () => init());
+})();
