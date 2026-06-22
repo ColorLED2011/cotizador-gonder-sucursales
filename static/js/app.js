@@ -67,11 +67,25 @@
   function init() {
     const saved = localStorage.getItem(CONFIG_KEY);
     if (saved) {
-      try { config = JSON.parse(saved); mostrarApp(); }
-      catch { mostrarConfig(); }
-    } else {
-      mostrarConfig();
+      try { config = JSON.parse(saved); } catch { config = { plEstandar: null, plBCV: null }; }
     }
+    // Arrancar la app inmediatamente; listas de precio se cargan en segundo plano
+    mostrarApp();
+    _cargarListasFondo();
+  }
+
+  async function _cargarListasFondo() {
+    if (config.plEstandar && config.plBCV) return;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      const resp = await fetch('/api/listas-precio', { signal: ctrl.signal }).then(x => x.json());
+      clearTimeout(timer);
+      if (resp.error || !resp.listas?.length) return;
+      if (!config.plEstandar) config.plEstandar = resp.listas[0].id;
+      if (!config.plBCV)      config.plBCV      = resp.listas[0].id;
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    } catch { /* sin conexion Odoo */ }
   }
 
   function mostrarApp() {
