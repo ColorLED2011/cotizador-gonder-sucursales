@@ -205,13 +205,15 @@ def api_ping():
 
 @app.route("/api/debug-pricelist/<int:pl_id>")
 def api_debug_pricelist(pl_id):
+    """Devuelve los primeros 10 items de una lista de precio para diagnóstico."""
     try:
         items = odoo_call(
             "product.pricelist.item", "search_read",
             [[["pricelist_id", "=", pl_id]]],
-            {"fields": ["product_id","product_tmpl_id","categ_id","compute_price",
-                        "fixed_price","percent_price","applied_on","base"],
-             "limit": 20},
+            {"fields": ["product_id", "product_tmpl_id", "compute_price",
+                        "fixed_price", "percent_price", "price_discount",
+                        "applied_on", "base"],
+             "limit": 10},
         )
         return jsonify({"pl_id": pl_id, "items": items, "count": len(items)})
     except Exception as exc:
@@ -261,9 +263,9 @@ def api_productos():
     Busca productos por nombre, código de barras, o devuelve catálogo completo.
     Query params:
       q           — texto libre (nombre / código interno)
-      barcode      — código de barras exacto
-      catalogo     — "1" para listar todos (sin q ni barcode)
-      limit        — máximo de resultados (default 30; catálogo default 60)
+      barcode     — código de barras exacto
+      catalogo    — "1" para listar todos (sin q ni barcode)
+      limit       — máximo de resultados (default 30; catálogo default 60)
       pl_estandar — ID de lista de precio Estándar (elegida en la UI)
       pl_bcv      — ID de lista de precio BCV      (elegida en la UI)
     """
@@ -293,7 +295,8 @@ def api_productos():
             {
                 "fields": [
                     "id", "name", "default_code", "barcode",
-                    "lst_price", "uom_id", "image_128", "product_tmpl_id",
+                    "lst_price", "uom_id", "image_128",
+                    "product_tmpl_id", "categ_id",
                 ],
                 "limit": limit,
                 "order": "name asc",
@@ -352,121 +355,4 @@ def api_productos():
         tmpl_ids   = [(p["product_tmpl_id"][0] if isinstance(p.get("product_tmpl_id"), list)
                        else p.get("product_tmpl_id") or 0) for p in productos_raw]
         categ_ids  = [(p["categ_id"][0] if isinstance(p.get("categ_id"), list)
-                       else p.get("categ_id") or 0) for p in productos_raw]
-        lst_prices = [p["lst_price"] for p in productos_raw]
-
-        pe_map = _batch_precios(pl_estandar, prod_ids, tmpl_ids, categ_ids, lst_prices)
-        pb_map = _batch_precios(pl_bcv,      prod_ids, tmpl_ids, categ_ids, lst_prices)
-
-        resultado = []
-        for p in productos_raw:
-            pe = pe_map.get(p["id"]) or p["lst_price"]
-            pb = pb_map.get(p["id"]) or p["lst_price"]
-            resultado.append({
-                "id":              p["id"],
-                "nombre":          p["name"],
-                "codigo":          p.get("default_code") or "",
-                "barcode":         p.get("barcode") or "",
-                "uom":             p["uom_id"][1] if p.get("uom_id") else "",
-                "imagen":          p.get("image_128") or "",
-                "precio_estandar": round(pe, 2),
-                "precio_bcv":      round(pb, 2),
-                "precio_bcv_bs":   round(pb * tasa, 2),
-                "tasa_bcv":        tasa,
-            })
-
-        return jsonify({"productos": resultado, "total": len(resultado)})
-
-    except Exception as exc:
-        log.error("Error buscando productos: %s", exc)
-        return jsonify({"error": str(exc)}), 500
-
-
-@app.route("/api/producto/<int:product_id>")
-
-def api_producto_detalle(product_id):
-    """
-    Detalle completo de un producto para la ficha del catálogo.
-    Incluye imagen de mayor resolución y embalajes/packaging.
-    """
-    pl_estandar = request.args.get("pl_estandar", type=int)
-    pl_bcv      = request.args.get("pl_bcv",      type=int)
-
-    try:
-        prods = odoo_call(
-            "product.product",
-            "search_read",
-            [[["id", "=", product_id]]],
-            {
-                "fields": [
-                    "id", "name", "default_code", "barcode",
-                    "lst_price", "uom_id", "image_256", "description_sale",
-                ],
-                "limit": 1,
-            },
-        )
-        if not prods:
-            return jsonify({"error": "Producto no encontrado"}), 404
-
-        p    = prods[0]
-        tasa = get_tasa_bcv()
-
-        precio_estandar = (
-            _precio_en_lista(p["id"], pl_estandar) if pl_estandar else p["lst_price"]
-        ) or p["lst_price"]
-
-        precio_bcv = (
-            _precio_en_lista(p["id"], pl_bcv) if pl_bcv else p["lst_price"]
-        ) or p["lst_price"]
-
-        # Embalajes / packaging del producto
-        try:
-            pkgs = odoo_call(
-                "product.packaging",
-                "search_read",
-                [[["product_id", "=", product_id]]],
-                {"fields": ["name", "qty"], "limit": 5, "order": "qty asc"},
-            )
-            embalajes = [{"nombre": pk["name"], "qty": pk["qty"]} for pk in pkgs]
-        except Exception:
-            embalajes = []
-
-        return jsonify({
-            "id":              p["id"],
-            "nombre":          p["name"],
-            "codigo":          p.get("default_code") or "",
-            "barcode":         p.get("barcode") or "",
-            "descripcion":     p.get("description_sale") or "",
-            "uom":             p["uom_id"][1] if p.get("uom_id") else "",
-            "imagen":          p.get("image_256") or "",
-            "precio_estandar": round(precio_estandar, 2),
-            "precio_bcv":      round(precio_bcv, 2),
-            "precio_bcv_bs":   round(precio_bcv * tasa, 2),
-            "tasa_bcv":        tasa,
-            "embalajes":       embalajes,
-        })
-
-    except Exception as exc:
-        log.error("Error obteniendo detalle del producto %s: %s", product_id, exc)
-        return jsonify({"error": str(exc)}), 500
-
-
-@app.route("/api/orden", methods=["POST"])
-
-def api_crear_orden():
-    """
-    Crea un sale.order en Odoo en estado Borrador usando la Tarifa BCV.
-    El nombre del vendedor va en client_order_ref (no requiere usuario Odoo).
-
-    Body JSON:
-    {
-        "vendedor":   "Nombre Vendedor",
-        "cliente_id": 1,
-        "pl_bcv":     3,
-        "items": [
-            {"product_id": 5, "qty": 2, "precio_bcv": 10.50}
-        ],
-        "notas": "Texto libre"
-    }
-    """
-    
+                       else p.get("categ_id") 
