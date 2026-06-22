@@ -286,7 +286,46 @@ def api_productos():
         )
 
         tasa = get_tasa_bcv()
-        resultado = [_build_producto_dict(p, pl_estandar, pl_bcv, tasa) for p in productos_raw]
+
+        # ── Batch price lookup (evita N llamadas a Odoo, una sola por lista) ──
+        def _batch_precios(pl_id, prod_ids):
+            if not pl_id or not prod_ids:
+                return {}
+            try:
+                items = odoo_call(
+                    "product.pricelist.item", "search_read",
+                    [[["pricelist_id", "=", pl_id], ["product_id", "in", prod_ids]]],
+                    {"fields": ["product_id", "fixed_price", "compute_price"],
+                     "limit": len(prod_ids) * 3},
+                )
+                return {
+                    item["product_id"][0]: item["fixed_price"]
+                    for item in items
+                    if item.get("compute_price") == "fixed" and item.get("product_id")
+                }
+            except Exception:
+                return {}
+
+        prod_ids = [p["id"] for p in productos_raw]
+        pe_map = _batch_precios(pl_estandar, prod_ids)
+        pb_map = _batch_precios(pl_bcv, prod_ids)
+
+        resultado = []
+        for p in productos_raw:
+            pe = pe_map.get(p["id"]) or p["lst_price"]
+            pb = pb_map.get(p["id"]) or p["lst_price"]
+            resultado.append({
+                "id":              p["id"],
+                "nombre":          p["name"],
+                "codigo":          p.get("default_code") or "",
+                "barcode":         p.get("barcode") or "",
+                "uom":             p["uom_id"][1] if p.get("uom_id") else "",
+                "imagen":          p.get("image_128") or "",
+                "precio_estandar": round(pe, 2),
+                "precio_bcv":      round(pb, 2),
+                "precio_bcv_bs":   round(pb * tasa, 2),
+                "tasa_bcv":        tasa,
+            })
 
         return jsonify({"productos": resultado, "total": len(resultado)})
 
