@@ -198,6 +198,11 @@ def _build_producto_dict(p: dict, pl_estandar: int | None, pl_bcv: int | None, t
 
 # ─── API ENDPOINTS ────────────────────────────────────────────────────────────
 
+@app.route("/api/ping")
+def api_ping():
+    return jsonify({"ok": True})
+
+
 @app.route("/")
 
 def index():
