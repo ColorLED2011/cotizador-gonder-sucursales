@@ -209,9 +209,9 @@ def api_debug_pricelist(pl_id):
         items = odoo_call(
             "product.pricelist.item", "search_read",
             [[["pricelist_id", "=", pl_id]]],
-            {"fields": ["product_id","product_tmpl_id","compute_price",
+            {"fields": ["product_id","product_tmpl_id","categ_id","compute_price",
                         "fixed_price","percent_price","applied_on","base"],
-             "limit": 10},
+             "limit": 20},
         )
         return jsonify({"pl_id": pl_id, "items": items, "count": len(items)})
     except Exception as exc:
