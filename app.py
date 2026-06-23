@@ -205,17 +205,34 @@ def api_ping():
 
 @app.route("/api/debug-pricelist/<int:pl_id>")
 def api_debug_pricelist(pl_id):
-    """Devuelve los primeros 10 items de una lista de precio para diagnóstico."""
+    """Devuelve items y categ_ids de la lista de precio. q=código para ver categ de producto."""
+    q = request.args.get("q", "")
     try:
         items = odoo_call(
             "product.pricelist.item", "search_read",
             [[["pricelist_id", "=", pl_id]]],
-            {"fields": ["product_id", "product_tmpl_id", "compute_price",
-                        "fixed_price", "percent_price", "price_discount",
-                        "applied_on", "base"],
-             "limit": 10},
+            {"fields": ["product_id", "product_tmpl_id", "categ_id", "compute_price",
+                        "fixed_price", "percent_price", "applied_on"],
+             "limit": 100},
         )
-        return jsonify({"pl_id": pl_id, "items": items, "count": len(items)})
+        cat_items = [i for i in items if i.get("applied_on") == "2_product_category"]
+        categ_ids_in_pl = {(i["categ_id"][0] if isinstance(i["categ_id"], list) else i["categ_id"]): i["percent_price"] for i in cat_items if i.get("categ_id")}
+
+        prod_info = None
+        if q:
+            prods = odoo_call("product.product", "search_read",
+                [[["default_code", "=", q.upper()], ["active", "=", True]]],
+                {"fields": ["id", "name", "categ_id", "lst_price"], "limit": 1})
+            if prods:
+                p = prods[0]
+                cid = p["categ_id"][0] if isinstance(p.get("categ_id"), list) else p.get("categ_id")
+                prod_info = {"id": p["id"], "name": p["name"], "categ_id": cid,
+                             "categ_name": p["categ_id"][1] if isinstance(p.get("categ_id"), list) else None,
+                             "lst_price": p["lst_price"],
+                             "categ_in_pricelist": cid in categ_ids_in_pl,
+                             "pct_if_matched": categ_ids_in_pl.get(cid)}
+        return jsonify({"pl_id": pl_id, "total_items": len(items),
+                        "category_rules": categ_ids_in_pl, "product": prod_info})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -263,11 +280,11 @@ def api_productos():
     Busca productos por nombre, código de barras, o devuelve catálogo completo.
     Query params:
       q           — texto libre (nombre / código interno)
-      barcode      — código de barras exacto
-      catalogo     —"1" para listar todos (sin q ni barcode)
-      limit        — máximo de resultados (default 30; catálogo default 60)
-      pl_estandar ─ ID de lista de precio Estándar (elegida en la UI)
-      pl_bcv       — ID de lista de precio BCV      (elegida en la UI)
+      barcode     — código de barras exacto
+      catalogo    — "1" para listar todos (sin q ni barcode)
+      limit       — máximo de resultados (default 30; catálogo default 60)
+      pl_estandar — ID de lista de precio Estándar (elegida en la UI)
+      pl_bcv      — ID de lista de precio BCV      (elegida en la UI)
     """
     q           = request.args.get("q", "").strip()
     barcode     = request.args.get("barcode", "").strip()
