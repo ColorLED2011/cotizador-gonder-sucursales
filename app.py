@@ -39,6 +39,56 @@ _tasa_cache: dict = {"valor": None, "timestamp": 0}
 _tasa_lock = Lock()
 CACHE_TTL = 1800  # 30 minutos
 
+# Cache de pricelist items (5 min TTL)
+_pl_items_cache = {}
+_pl_items_lock = Lock()
+PL_CACHE_TTL = 300
+
+
+def _get_pl_items(pl_id):
+    """Devuelve (items, categ_parents) con cache de 5 minutos."""
+    with _pl_items_lock:
+        entry = _pl_items_cache.get(pl_id)
+        if entry and (time.time() - entry["ts"]) < PL_CACHE_TTL:
+            return entry["items"], entry["categ_parents"]
+    try:
+        items = odoo_call(
+            "product.pricelist.item", "search_read",
+            [[["pricelist_id", "=", pl_id]]],
+            {"fields": ["product_id", "product_tmpl_id", "categ_id",
+                        "fixed_price", "compute_price",
+                        "percent_price", "applied_on"],
+             "limit": 1000},
+        )
+    except Exception:
+        items = []
+    categ_parents = {}
+    if items:
+        cat_ids = list({i["categ_id"][0] for i in items
+                        if i.get("applied_on") == "2_product_category"
+                        and isinstance(i.get("categ_id"), list)})
+        to_fetch = set(cat_ids)
+        for _ in range(6):
+            if not to_fetch:
+                break
+            try:
+                cats = odoo_call("product.category", "search_read",
+                    [[["id", "in", list(to_fetch)]]],
+                    {"fields": ["id", "parent_id"], "limit": 500})
+            except Exception:
+                break
+            nxt = set()
+            for cat in cats:
+                pid = cat["parent_id"][0] if isinstance(cat.get("parent_id"), list) else None
+                categ_parents[cat["id"]] = pid
+                if pid and pid not in categ_parents:
+                    nxt.add(pid)
+            to_fetch = nxt
+    with _pl_items_lock:
+        _pl_items_cache[pl_id] = {"items": items, "categ_parents": categ_parents, "ts": time.time()}
+    return items, categ_parents
+
+
 
 # âââ Scraper BCV âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _scrape_bcv() -> float | None:
@@ -291,7 +341,8 @@ def api_productos():
     catalogo    = request.args.get("catalogo", "0") == "1"
     pl_estandar = request.args.get("pl_estandar", type=int)
     pl_bcv      = request.args.get("pl_bcv",      type=int)
-    limit       = int(request.args.get("limit", 60 if catalogo else 30))
+    limit       = int(request.args.get("limit", 100 if catalogo else 30))
+    offset      = int(request.args.get("offset", 0))
 
     if not q and not barcode and not catalogo:
         return jsonify({"error": "Se requiere 'q', 'barcode', o catalogo=1"}), 400
@@ -305,17 +356,18 @@ def api_productos():
             domain.extend(["|", ["name", "ilike", q], ["default_code", "ilike", q]])
         # catalogo=1 â sin filtro adicional, devuelve todos los productos activos
 
+        _fields = ["id", "name", "default_code", "barcode",
+                   "lst_price", "uom_id", "product_tmpl_id", "categ_id"]
+        if not catalogo:
+            _fields.append("image_128")
         productos_raw = odoo_call(
             "product.product",
             "search_read",
             [domain],
             {
-                "fields": [
-                    "id", "name", "default_code", "barcode",
-                    "lst_price", "uom_id", "image_128",
-                    "product_tmpl_id", "categ_id",
-                ],
+                "fields": _fields,
                 "limit": limit,
+                "offset": offset,
                 "order": "name asc",
             },
         )
@@ -326,62 +378,28 @@ def api_productos():
         def _batch_precios(pl_id, prod_ids, tmpl_ids, categ_ids, lst_prices):
             if not pl_id or not prod_ids:
                 return {}
-            try:
-                items = odoo_call(
-                    "product.pricelist.item", "search_read",
-                    [[["pricelist_id", "=", pl_id]]],
-                    {"fields": ["product_id", "product_tmpl_id", "categ_id",
-                                "fixed_price", "compute_price",
-                                "percent_price", "applied_on"],
-                     "limit": 1000},
-                )
-            except Exception:
+            items, categ_parents = _get_pl_items(pl_id)
+            if not items:
                 return {}
-
             result  = {}
-            cat_pct = {}   # categ_id â percent_price
-
+            cat_pct = {}
+            prod_set = set(prod_ids)
             for item in items:
                 cp  = item.get("compute_price", "")
                 aon = item.get("applied_on", "")
-
                 if aon == "0_product_variant" and item.get("product_id") and cp == "fixed":
                     pid = item["product_id"][0]
-                    if pid in prod_ids and pid not in result:
+                    if pid in prod_set and pid not in result:
                         result[pid] = item["fixed_price"]
-
                 elif aon == "1_product" and item.get("product_tmpl_id") and cp == "fixed":
                     tid = item["product_tmpl_id"][0]
                     for p_id, t_id in zip(prod_ids, tmpl_ids):
                         if t_id == tid and p_id not in result:
                             result[p_id] = item["fixed_price"]
-
                 elif aon == "2_product_category" and item.get("categ_id") and cp == "percentage":
                     cid = item["categ_id"][0]
                     if cid not in cat_pct:
                         cat_pct[cid] = item["percent_price"]
-
-            # Resolve parent category hierarchy (Odoo matches up the tree)
-            all_cids = list(set(categ_ids))
-            categ_parents = {}
-            to_fetch = set(all_cids)
-            for _ in range(5):  # max 5 levels deep
-                if not to_fetch:
-                    break
-                try:
-                    cats = odoo_call("product.category", "search_read",
-                        [[["id", "in", list(to_fetch)]]],
-                        {"fields": ["id", "parent_id"], "limit": 500})
-                except Exception:
-                    break
-                next_fetch = set()
-                for c in cats:
-                    pid = c["parent_id"][0] if isinstance(c.get("parent_id"), list) else None
-                    categ_parents[c["id"]] = pid
-                    if pid and pid not in categ_parents:
-                        next_fetch.add(pid)
-                to_fetch = next_fetch
-
             def _resolve_categ(cid):
                 visited, cur = set(), cid
                 while cur and cur not in visited:
@@ -390,14 +408,12 @@ def api_productos():
                     visited.add(cur)
                     cur = categ_parents.get(cur)
                 return None
-
             for p_id, c_id, base in zip(prod_ids, categ_ids, lst_prices):
                 if p_id not in result:
                     eff = _resolve_categ(c_id)
                     if eff is not None:
                         pct = cat_pct[eff]
                         result[p_id] = round(base * (1 - pct / 100), 4)
-
             return result
 
         prod_ids   = [p["id"] for p in productos_raw]
