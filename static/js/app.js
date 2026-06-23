@@ -1,32 +1,32 @@
 /**
  * Cotizador Sucursales GONDER
- * Frontend SPA — Carrito en memoria + html5-qrcode + Fetch API
+ * Frontend SPA â Carrito en memoria + html5-qrcode + Fetch API
  */
 
 (function () {
   'use strict';
 
-  // ── Constantes ───────────────────────────────────────────────────────────────
+  // ââ Constantes âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   const CONFIG_KEY  = 'gonder_config';
   const DEBOUNCE_MS = 350;
 
-  // ── Estado global ────────────────────────────────────────────────────────────
+  // ââ Estado global ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   let carrito       = [];
   let tasaBCV       = 0;
   let config        = { plEstandar: null, plBCV: null };
   let scanner       = null;
   let scannerMode   = 'cart';   // 'cart' | 'catalog'
   let clienteId     = null;
-  let catProductos  = [];       // catálogo completo para filtrar localmente
+  let catProductos  = [];       // catÃ¡logo completo para filtrar localmente
   let buscarTimer   = null;
   let clienteTimer  = null;
 
-  // ── Caché de productos (para evitar pasar JSON en onclick) ───────────────────
-  const _prodCache    = {};   // id → producto (buscador / catálogo)
-  const _clienteCache = {};   // id → cliente
-  let   _fichaActual  = null; // producto que está en la ficha ahora mismo
+  // ââ CachÃ© de productos (para evitar pasar JSON en onclick) âââââââââââââââââââ
+  const _prodCache    = {};   // id â producto (buscador / catÃ¡logo)
+  const _clienteCache = {};   // id â cliente
+  let   _fichaActual  = null; // producto que estÃ¡ en la ficha ahora mismo
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  // ââ Helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   const fUSD = n => '$ ' + Number(n).toFixed(2);
   const fBs  = n => 'Bs. ' + Number(n).toLocaleString('es-VE', {
     minimumFractionDigits: 2, maximumFractionDigits: 2
@@ -48,7 +48,7 @@
     setTimeout(() => t.classList.remove('show'), 2500);
   }
 
-  // ── Parámetros de lista de precio ────────────────────────────────────────────
+  // ââ ParÃ¡metros de lista de precio ââââââââââââââââââââââââââââââââââââââââââââ
   function plParams(leading = '&') {
     const p = [];
     if (config.plEstandar) p.push(`pl_estandar=${config.plEstandar}`);
@@ -56,14 +56,14 @@
     return p.length ? leading + p.join('&') : '';
   }
 
-  // ── Navegación ───────────────────────────────────────────────────────────────
+  // ââ NavegaciÃ³n âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function goTo(screenId) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     el(screenId).classList.add('active');
     if (screenId === 'scr-catalogo' && catProductos.length === 0) cargarCatalogo();
   }
 
-  // ── Inicialización ───────────────────────────────────────────────────────────
+  // ââ InicializaciÃ³n âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function init() {
     const saved = localStorage.getItem(CONFIG_KEY);
     if (saved) {
@@ -76,18 +76,22 @@
 
   async function _cargarListasFondo() {
     // Si ya hay config guardada no molestar
-    if (config.plEstandar && config.plBCV) return;
+    if (config.plEstandar && config.plBCV && config.plEstandar !== config.plBCV) return;
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 8000);
       const d = await fetch('/api/listas-precio', { signal: ctrl.signal }).then(r => r.json());
       clearTimeout(timer);
       if (d.error || !d.listas?.length) return;
-      // Guardar la primera lista como predeterminada si no hay config
-      if (!config.plEstandar) config.plEstandar = d.listas[0].id;
-      if (!config.plBCV)      config.plBCV      = d.listas[0].id;
+      // Autodetectar: USD estándar y USD BCV por nombre
+      const _usd    = d.listas.find(l => /USD/i.test(l.name) && !/BCV/i.test(l.name));
+      const _usdBcv = d.listas.find(l => /BCV/i.test(l.name));
+      if (!config.plEstandar || config.plEstandar === config.plBCV)
+        config.plEstandar = _usd?.id    || d.listas[0].id;
+      if (!config.plBCV || config.plBCV === config.plEstandar)
+        config.plBCV      = _usdBcv?.id || d.listas[d.listas.length - 1].id;
       localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-    } catch { /* Odoo no disponible – continuar sin listas */ }
+    } catch { /* Odoo no disponible â continuar sin listas */ }
   }
 
   function mostrarApp() {
@@ -96,7 +100,7 @@
     cargarTasa();
   }
 
-  // ── Tasa BCV ─────────────────────────────────────────────────────────────────
+  // ââ Tasa BCV âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   async function cargarTasa() {
     try {
       const d = await fetch('/api/tasa').then(r => r.json());
@@ -105,10 +109,10 @@
         el('hdr-tasa').textContent = fBs(d.tasa);
         actualizarTotales();
       }
-    } catch { /* mantener último valor */ }
+    } catch { /* mantener Ãºltimo valor */ }
   }
 
-  // ── Configuración ─────────────────────────────────────────────────────────────
+  // ââ ConfiguraciÃ³n âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   async function mostrarConfig() {
     el('modal-config').classList.remove('hidden');
     el('app').classList.add('hidden');
@@ -138,7 +142,7 @@
       el('config-loading').classList.add('hidden');
       el('config-error-main').classList.remove('hidden');
       el('config-error-main').innerHTML =
-        '⚠️ No se pudo conectar con Odoo.<br>' +
+        'â ï¸ No se pudo conectar con Odoo.<br>' +
         '<button onclick="GonderApp.saltarConfig()" ' +
         'style="margin-top:12px;padding:10px 20px;background:#F2C200;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px;">' +
         'Continuar sin listas de precio</button>';
@@ -159,7 +163,7 @@
     mostrarApp();
   }
 
-  // ── Búsqueda de clientes ──────────────────────────────────────────────────────
+  // ââ BÃºsqueda de clientes ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function buscarCliente(q) {
     clearTimeout(clienteTimer);
     const dd = el('dd-cliente');
@@ -201,7 +205,7 @@
     el('dd-cliente').classList.remove('open');
   }
 
-  // ── Búsqueda de productos ─────────────────────────────────────────────────────
+  // ââ BÃºsqueda de productos âââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function buscarProducto(q) {
     clearTimeout(buscarTimer);
     const dd = el('dd-productos');
@@ -220,10 +224,10 @@
           <div class="dd-item" onclick="GonderApp.agregarPorId(${p.id})">
             ${p.imagen
               ? `<img src="data:image/png;base64,${p.imagen}" class="prod-img" alt=""/>`
-              : '<div class="prod-img-placeholder"><span style="font-size:18px">📦</span></div>'}
+              : '<div class="prod-img-placeholder"><span style="font-size:18px">ð¦</span></div>'}
             <div class="flex-1 min-w-0">
               <div class="text-xs font-semibold text-gray-800 truncate">${escHtml(p.nombre)}</div>
-              <div class="text-[10px] text-gray-400">${escHtml(p.codigo)} · ${escHtml(p.uom)}</div>
+              <div class="text-[10px] text-gray-400">${escHtml(p.codigo)} Â· ${escHtml(p.uom)}</div>
               <div class="text-[10px] mt-0.5">
                 <span class="text-emerald-500 font-semibold">${fUSD(p.precio_estandar)}</span>
                 &nbsp;<span class="text-blue-500 font-semibold">${fUSD(p.precio_bcv)}</span>
@@ -243,7 +247,7 @@
       el('dd-cliente').classList.remove('open');
   });
 
-  // ── Carrito ───────────────────────────────────────────────────────────────────
+  // ââ Carrito âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function agregarPorId(id) {
     const p = _prodCache[id];
     if (p) _agregarProducto(p);
@@ -276,7 +280,7 @@
     el('inp-buscar').value = '';
     el('dd-productos').classList.remove('open');
     renderCarrito();
-    toast('✓ ' + p.nombre + ' agregado', '#10B981');
+    toast('â ' + p.nombre + ' agregado', '#10B981');
   }
 
   function cambiarCantidad(id, delta) {
@@ -309,14 +313,14 @@
       .forEach(id => { el(id).value = ''; });
     el('dd-productos').classList.remove('open');
     renderCarrito();
-    toast('🔄 Pedido nuevo iniciado');
+    toast('ð Pedido nuevo iniciado');
   }
 
   function renderCarrito() {
     const tbody = el('tbody-carrito');
     if (!carrito.length) {
       tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-gray-400 text-xs">
-        Agrega productos desde el buscador o el catálogo</td></tr>`;
+        Agrega productos desde el buscador o el catÃ¡logo</td></tr>`;
       el('tot-usd').textContent = '$ 0.00';
       el('tot-bcv').textContent = '$ 0.00';
       el('tot-bs').textContent  = fBs(0);
@@ -336,7 +340,7 @@
         <td class="c">
           ${item.imagen
             ? `<img src="data:image/png;base64,${item.imagen}" class="prod-img mx-auto" alt=""/>`
-            : '<div class="prod-img-placeholder mx-auto"><span style="font-size:16px">📦</span></div>'}
+            : '<div class="prod-img-placeholder mx-auto"><span style="font-size:16px">ð¦</span></div>'}
         </td>
         <td>
           <div class="text-xs font-semibold text-gray-800 leading-tight">${escHtml(item.nombre)}</div>
@@ -345,7 +349,7 @@
         <td class="c">
           <div style="display:flex;align-items:center;gap:3px;justify-content:center">
             <button onclick="GonderApp.cambiarCantidad(${item.id},-1)"
-              style="width:20px;height:28px;border-radius:5px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>
+              style="width:20px;height:28px;border-radius:5px;border:1px solid #e2e8f0;background:#f8fafc;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">â</button>
             <input id="qty-${item.id}" class="qty-inp" type="number"
               min="0.01" step="0.01" value="${qDisp}" inputmode="decimal"
               onchange="GonderApp.setQty(${item.id},this.value)"
@@ -394,21 +398,21 @@
     el('tot-bs').textContent  = fBs(totB * tasaBCV);
   }
 
-  // ── Enviar a Odoo ─────────────────────────────────────────────────────────────
+  // ââ Enviar a Odoo âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   async function confirmarPedido() {
-    if (!carrito.length) { toast('⚠️ El carrito está vacío'); return; }
+    if (!carrito.length) { toast('â ï¸ El carrito estÃ¡ vacÃ­o'); return; }
 
     const vendedor = el('inp-vendedor').value.trim();
     const cliId    = parseInt(el('inp-cliente-id').value) || null;
 
     if (!cliId) {
-      toast('⚠️ Selecciona un cliente de Odoo', '#ef4444');
+      toast('â ï¸ Selecciona un cliente de Odoo', '#ef4444');
       el('inp-cliente-nombre').focus();
       return;
     }
 
     try {
-      toast('⏳ Enviando a Odoo…');
+      toast('â³ Enviando a Odooâ¦');
       const r = await fetch('/api/orden', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -425,22 +429,22 @@
       });
       const d = await r.json();
       if (d.ok) {
-        toast('✅ ' + d.mensaje, '#10B981');
+        toast('â ' + d.mensaje, '#10B981');
         setTimeout(nuevoPedido, 2000);
       } else {
-        toast('❌ ' + d.error, '#ef4444');
+        toast('â ' + d.error, '#ef4444');
       }
     } catch {
-      toast('❌ Sin conexión con el servidor', '#ef4444');
+      toast('â Sin conexiÃ³n con el servidor', '#ef4444');
     }
   }
 
-  // ── WhatsApp ──────────────────────────────────────────────────────────────────
+  // ââ WhatsApp ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function enviarWhatsApp() {
-    if (!carrito.length) { toast('⚠️ El carrito está vacío'); return; }
+    if (!carrito.length) { toast('â ï¸ El carrito estÃ¡ vacÃ­o'); return; }
 
-    const vendedor = el('inp-vendedor').value.trim()      || '—';
-    const cliente  = el('inp-cliente-nombre').value.trim() || '—';
+    const vendedor = el('inp-vendedor').value.trim()      || 'â';
+    const cliente  = el('inp-cliente-nombre').value.trim() || 'â';
     const cedula   = el('inp-cliente-cedula').value.trim();
     const hoy      = new Date().toLocaleDateString('es-VE');
 
@@ -449,35 +453,35 @@
       const subE = i.pe * i.qty, subB = i.pb * i.qty;
       totE += subE; totB += subB;
       const qd = i.qty % 1 === 0 ? i.qty : i.qty.toFixed(2);
-      return `• ${i.nombre} (x${qd})\n  USD: ${fUSD(subE)} | BCV: ${fUSD(subB)} (${fBs(subB * (i.tasa || tasaBCV))})`;
+      return `â¢ ${i.nombre} (x${qd})\n  USD: ${fUSD(subE)} | BCV: ${fUSD(subB)} (${fBs(subB * (i.tasa || tasaBCV))})`;
     }).join('\n');
 
-    const sep = '─'.repeat(28);
+    const sep = 'â'.repeat(28);
     const msg = [
-      `🧾 *COTIZACIÓN GONDER*`,
-      `📑 ${hoy}`,
+      `ð§¾ *COTIZACIÃN GONDER*`,
+      `ð ${hoy}`,
       ``,
-      `👤 *Vendedor:* ${vendedor}`,
-      `🏪 *Cliente:* ${cliente}${cedula ? ' | ' + cedula : ''}`,
+      `ð¤ *Vendedor:* ${vendedor}`,
+      `ðª *Cliente:* ${cliente}${cedula ? ' | ' + cedula : ''}`,
       ``,
-      sep, `📦 *PRODUCTOS*`, sep,
+      sep, `ð¦ *PRODUCTOS*`, sep,
       lineas, sep,
-      `💵 *Total USD:* ${fUSD(totE)}`,
-      `💙 *Total BCV:* ${fUSD(totB)}`,
-      `🇻🇪 *Total Bs.:* ${fBs(totB * tasaBCV)}`,
+      `ðµ *Total USD:* ${fUSD(totE)}`,
+      `ð *Total BCV:* ${fUSD(totB)}`,
+      `ð»ðª *Total Bs.:* ${fBs(totB * tasaBCV)}`,
       sep,
-      `_Cotización generada por Sistema GONDER_`,
+      `_CotizaciÃ³n generada por Sistema GONDER_`,
     ].join('\n');
 
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-    toast('📲 Abriendo WhatsApp…', '#25D366');
+    toast('ð² Abriendo WhatsAppâ¦', '#25D366');
   }
 
-  // ── Catálogo ──────────────────────────────────────────────────────────────────
+  // ââ CatÃ¡logo ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   async function cargarCatalogo() {
     el('cat-list').innerHTML = `
       <div class="text-center py-10 text-gray-400 text-sm flex flex-col items-center gap-2">
-        <div class="spinner"></div>Cargando catálogo…
+        <div class="spinner"></div>Cargando catÃ¡logoâ¦
       </div>`;
     try {
       const d = await fetch(`/api/productos?catalogo=1${plParams()}`).then(r => r.json());
@@ -486,7 +490,7 @@
       renderCatalogo(catProductos);
     } catch (e) {
       el('cat-list').innerHTML = `
-        <div class="text-center py-8 text-red-400 text-xs">⚠️ Error: ${escHtml(e.message)}</div>`;
+        <div class="text-center py-8 text-red-400 text-xs">â ï¸ Error: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -508,27 +512,27 @@
         onclick="GonderApp.verFicha(${p.id})">
         ${p.imagen
           ? `<img src="data:image/png;base64,${p.imagen}" class="prod-img" alt=""/>`
-          : '<div class="prod-img-placeholder"><span style="font-size:18px">📦</span></div>'}
+          : '<div class="prod-img-placeholder"><span style="font-size:18px">ð¦</span></div>'}
         <div class="flex-1 min-w-0">
           <div class="text-xs font-semibold text-gray-800 truncate">${escHtml(p.nombre)}</div>
-          <div class="text-[10px] text-gray-400">${escHtml(p.codigo)} · ${escHtml(p.uom)}</div>
+          <div class="text-[10px] text-gray-400">${escHtml(p.codigo)} Â· ${escHtml(p.uom)}</div>
           <div class="flex gap-3 mt-0.5">
             <span class="text-emerald-500 font-semibold text-[10px]">${fUSD(p.precio_estandar)}</span>
             <span class="text-blue-500 font-semibold text-[10px]">${fUSD(p.precio_bcv)}</span>
           </div>
         </div>
-        <span class="text-gray-300 text-lg">›</span>
+        <span class="text-gray-300 text-lg">âº</span>
       </div>`).join('');
   }
 
-  // ── Ficha de producto ─────────────────────────────────────────────────────────
+  // ââ Ficha de producto âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   async function verFicha(productId) {
     _fichaActual = null;
     goTo('scr-ficha');
     el('ficha-cod').textContent = '';
     el('ficha-body').innerHTML = `
       <div class="text-center py-10 text-gray-400 text-sm flex flex-col items-center gap-2">
-        <div class="spinner"></div>Cargando ficha…
+        <div class="spinner"></div>Cargando fichaâ¦
       </div>`;
 
     try {
@@ -541,7 +545,7 @@
       const bloqueUnidad = `
         <div class="bg-white rounded-xl border border-gray-100 p-3">
           <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-            📦 Por unidad · ${escHtml(p.uom)}
+            ð¦ Por unidad Â· ${escHtml(p.uom)}
           </div>
           <div class="flex justify-between items-center mb-1.5">
             <span class="text-[10px] text-gray-500"><span class="badge-e">USD</span> Precio</span>
@@ -564,7 +568,7 @@
         return `
           <div class="bg-white rounded-xl border border-gray-100 p-3">
             <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">
-              📦 ${escHtml(emb.nombre)} · ${emb.qty} ${escHtml(p.uom)}
+              ð¦ ${escHtml(emb.nombre)} Â· ${emb.qty} ${escHtml(p.uom)}
             </div>
             <div class="flex justify-between items-center mb-1.5">
               <span class="text-[10px] text-gray-500"><span class="badge-e">USD</span> Precio</span>
@@ -584,7 +588,7 @@
       el('ficha-body').innerHTML = `
         ${p.imagen
           ? `<img src="data:image/png;base64,${p.imagen}" class="ficha-img" alt=""/>`
-          : '<div class="ficha-img-placeholder"><span style="font-size:48px">📦</span></div>'}
+          : '<div class="ficha-img-placeholder"><span style="font-size:48px">ð¦</span></div>'}
         <div class="px-1 space-y-3">
           <div>
             <div class="text-xs font-bold text-gray-800 leading-tight">${escHtml(p.nombre)}</div>
@@ -600,7 +604,7 @@
     }
   }
 
-  // ── Scanner ───────────────────────────────────────────────────────────────────
+  // ââ Scanner âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   function abrirScanner(mode) {
     scannerMode = mode || 'cart';
     el('scanner-overlay').classList.add('open');
@@ -635,7 +639,7 @@
     }
   }
 
-  // ── Exportar API publica ──────────────────────────────────────────────────────
+  // ââ Exportar API publica ââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   window.GonderApp = {
     init,
     goTo,
