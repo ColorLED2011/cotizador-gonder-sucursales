@@ -1,7 +1,7 @@
 """
 Cotizador Sucursales GONDER
-Backend Flask — Odoo v19 XML-RPC + Scraper BCV
-Producción: Render.com
+Backend Flask â Odoo v19 XML-RPC + Scraper BCV
+ProducciÃ³n: Render.com
 """
 
 import os
@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from flask import Flask, jsonify, render_template, request
 from dotenv import load_dotenv
 
-# ─── Configuración inicial ────────────────────────────────────────────────────
+# âââ ConfiguraciÃ³n inicial ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 load_dotenv()
 
 logging.basicConfig(
@@ -27,20 +27,20 @@ log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ─── Variables de entorno ─────────────────────────────────────────────────────
+# âââ Variables de entorno âââââââââââââââââââââââââââââââââââââââââââââââââââââ
 ODOO_URL      = os.environ.get("ODOO_URL", "")
 ODOO_DB       = os.environ.get("ODOO_DB", "")
 ODOO_USER     = os.environ.get("ODOO_USER", "")
 ODOO_PASSWORD = os.environ.get("ODOO_PASSWORD", "")
 
 
-# ─── Cache de tasa BCV ───────────────────────────────────────────────────────
+# âââ Cache de tasa BCV âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 _tasa_cache: dict = {"valor": None, "timestamp": 0}
 _tasa_lock = Lock()
 CACHE_TTL = 1800  # 30 minutos
 
 
-# ─── Scraper BCV ─────────────────────────────────────────────────────────────
+# âââ Scraper BCV âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _scrape_bcv() -> float | None:
     """Extrae la tasa USD del Banco Central de Venezuela."""
     headers = {
@@ -66,11 +66,11 @@ def _scrape_bcv() -> float | None:
         for m in matches:
             val = float(m.replace(",", "."))
             if 10 < val < 999999:
-                log.warning("BCV: tasa extraída por regex de respaldo: %s", val)
+                log.warning("BCV: tasa extraÃ­da por regex de respaldo: %s", val)
                 return val
 
     except Exception as exc:
-        log.error("BCV principal falló: %s", exc)
+        log.error("BCV principal fallÃ³: %s", exc)
 
     # Fallback: ExchangeRate-API
     try:
@@ -81,7 +81,7 @@ def _scrape_bcv() -> float | None:
             log.info("Tasa obtenida de ExchangeRate-API (fallback): %s", ves)
             return float(ves)
     except Exception as exc:
-        log.error("ExchangeRate-API fallback falló: %s", exc)
+        log.error("ExchangeRate-API fallback fallÃ³: %s", exc)
 
     return None
 
@@ -91,18 +91,18 @@ def get_tasa_bcv() -> float:
     with _tasa_lock:
         now = time.time()
         if _tasa_cache["valor"] is None or (now - _tasa_cache["timestamp"]) > CACHE_TTL:
-            log.info("Actualizando tasa BCV…")
+            log.info("Actualizando tasa BCVâ¦")
             nueva = _scrape_bcv()
             if nueva:
                 _tasa_cache["valor"] = nueva
                 _tasa_cache["timestamp"] = now
                 log.info("Tasa BCV actualizada: %s", nueva)
             else:
-                log.warning("No se pudo obtener tasa BCV; se mantiene la última conocida.")
+                log.warning("No se pudo obtener tasa BCV; se mantiene la Ãºltima conocida.")
         return _tasa_cache["valor"] or 0.0
 
 
-# ─── Conexión Odoo XML-RPC ───────────────────────────────────────────────────
+# âââ ConexiÃ³n Odoo XML-RPC âââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _odoo_common():
     return xmlrpc.client.ServerProxy(f"{ODOO_URL}/xmlrpc/2/common")
 
@@ -117,7 +117,7 @@ def odoo_uid() -> int:
         common = _odoo_common()
         uid = common.authenticate(ODOO_DB, ODOO_USER, ODOO_PASSWORD, {})
         if not uid:
-            raise ValueError("Credenciales Odoo inválidas.")
+            raise ValueError("Credenciales Odoo invÃ¡lidas.")
         return uid
     except Exception as exc:
         log.error("Error autenticando en Odoo: %s", exc)
@@ -134,10 +134,10 @@ def odoo_call(model: str, method: str, args: list, kwargs: dict | None = None) -
     )
 
 
-# ─── Lógica de Precios ───────────────────────────────────────────────────────
+# âââ LÃ³gica de Precios âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _precio_en_lista(product_id: int, pricelist_id: int, qty: float = 1.0) -> float:
     """
-    Obtiene el precio de un producto en una lista de precio específica.
+    Obtiene el precio de un producto en una lista de precio especÃ­fica.
     Consulta product.pricelist.item para mayor control.
     """
     items = odoo_call(
@@ -171,9 +171,9 @@ def _precio_en_lista(product_id: int, pricelist_id: int, qty: float = 1.0) -> fl
     return prod[0]["lst_price"] if prod else 0.0
 
 
-# ─── Helper de producto ───────────────────────────────────────────────────────
+# âââ Helper de producto âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 def _build_producto_dict(p: dict, pl_estandar: int | None, pl_bcv: int | None, tasa: float) -> dict:
-    """Construye el dict estándar de un producto con precios calculados."""
+    """Construye el dict estÃ¡ndar de un producto con precios calculados."""
     precio_estandar = (
         _precio_en_lista(p["id"], pl_estandar) if pl_estandar else p["lst_price"]
     ) or p["lst_price"]
@@ -196,7 +196,7 @@ def _build_producto_dict(p: dict, pl_estandar: int | None, pl_bcv: int | None, t
     }
 
 
-# ─── API ENDPOINTS ────────────────────────────────────────────────────────────
+# âââ API ENDPOINTS ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 @app.route("/api/ping")
 def api_ping():
@@ -205,7 +205,7 @@ def api_ping():
 
 @app.route("/api/debug-pricelist/<int:pl_id>")
 def api_debug_pricelist(pl_id):
-    """Devuelve items y categ_ids de la lista de precio. q=código para ver categ de producto."""
+    """Devuelve items y categ_ids de la lista de precio. q=cÃ³digo para ver categ de producto."""
     q = request.args.get("q", "")
     try:
         items = odoo_call(
@@ -263,7 +263,7 @@ def api_listas_precio():
 @app.route("/api/tasa")
 
 def api_tasa():
-    """Devuelve la tasa BCV del día."""
+    """Devuelve la tasa BCV del dÃ­a."""
     tasa = get_tasa_bcv()
     return jsonify({
         "tasa": tasa,
@@ -277,14 +277,14 @@ def api_tasa():
 
 def api_productos():
     """
-    Busca productos por nombre, código de barras, o devuelve catálogo completo.
+    Busca productos por nombre, cÃ³digo de barras, o devuelve catÃ¡logo completo.
     Query params:
-      q           — texto libre (nombre / código interno)
-      barcode     — código de barras exacto
-      catalogo    — "1" para listar todos (sin q ni barcode)
-      limit       — máximo de resultados (default 30; catálogo default 60)
-      pl_estandar — ID de lista de precio Estándar (elegida en la UI)
-      pl_bcv      — ID de lista de precio BCV      (elegida en la UI)
+      q           â texto libre (nombre / cÃ³digo interno)
+      barcode     â cÃ³digo de barras exacto
+      catalogo    â "1" para listar todos (sin q ni barcode)
+      limit       â mÃ¡ximo de resultados (default 30; catÃ¡logo default 60)
+      pl_estandar â ID de lista de precio EstÃ¡ndar (elegida en la UI)
+      pl_bcv      â ID de lista de precio BCV      (elegida en la UI)
     """
     q           = request.args.get("q", "").strip()
     barcode     = request.args.get("barcode", "").strip()
@@ -303,7 +303,7 @@ def api_productos():
             domain.append(["barcode", "=", barcode])
         elif q:
             domain.extend(["|", ["name", "ilike", q], ["default_code", "ilike", q]])
-        # catalogo=1 → sin filtro adicional, devuelve todos los productos activos
+        # catalogo=1 â sin filtro adicional, devuelve todos los productos activos
 
         productos_raw = odoo_call(
             "product.product",
@@ -322,7 +322,7 @@ def api_productos():
 
         tasa = get_tasa_bcv()
 
-        # ── Batch price lookup: fijo (variante/plantilla) + % por categoría ──
+        # ââ Batch price lookup: fijo (variante/plantilla) + % por categorÃ­a ââ
         def _batch_precios(pl_id, prod_ids, tmpl_ids, categ_ids, lst_prices):
             if not pl_id or not prod_ids:
                 return {}
@@ -339,7 +339,7 @@ def api_productos():
                 return {}
 
             result  = {}
-            cat_pct = {}   # categ_id → percent_price
+            cat_pct = {}   # categ_id â percent_price
 
             for item in items:
                 cp  = item.get("compute_price", "")
@@ -361,10 +361,42 @@ def api_productos():
                     if cid not in cat_pct:
                         cat_pct[cid] = item["percent_price"]
 
+            # Resolve parent category hierarchy (Odoo matches up the tree)
+            all_cids = list(set(categ_ids))
+            categ_parents = {}
+            to_fetch = set(all_cids)
+            for _ in range(5):  # max 5 levels deep
+                if not to_fetch:
+                    break
+                try:
+                    cats = odoo_call("product.category", "search_read",
+                        [[["id", "in", list(to_fetch)]]],
+                        {"fields": ["id", "parent_id"], "limit": 500})
+                except Exception:
+                    break
+                next_fetch = set()
+                for c in cats:
+                    pid = c["parent_id"][0] if isinstance(c.get("parent_id"), list) else None
+                    categ_parents[c["id"]] = pid
+                    if pid and pid not in categ_parents:
+                        next_fetch.add(pid)
+                to_fetch = next_fetch
+
+            def _resolve_categ(cid):
+                visited, cur = set(), cid
+                while cur and cur not in visited:
+                    if cur in cat_pct:
+                        return cur
+                    visited.add(cur)
+                    cur = categ_parents.get(cur)
+                return None
+
             for p_id, c_id, base in zip(prod_ids, categ_ids, lst_prices):
-                if p_id not in result and c_id in cat_pct:
-                    pct = cat_pct[c_id]
-                    result[p_id] = round(base * (1 - pct / 100), 4)
+                if p_id not in result:
+                    eff = _resolve_categ(c_id)
+                    if eff is not None:
+                        pct = cat_pct[eff]
+                        result[p_id] = round(base * (1 - pct / 100), 4)
 
             return result
 
@@ -487,7 +519,7 @@ def api_clientes():
         return jsonify({"error": str(exc)}), 500
 
 
-# ─── Keep-alive para Render Free ─────────────────────────────────────────────
+# âââ Keep-alive para Render Free âââââââââââââââââââââââââââââââââââââââââââââ
 def _keep_alive():
     time.sleep(60)
     app_url = os.environ.get("RENDER_EXTERNAL_URL", "")
@@ -502,7 +534,7 @@ def _keep_alive():
         time.sleep(14 * 60)
 
 
-# ─── Punto de entrada ─────────────────────────────────────────────────────────
+# âââ Punto de entrada âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 if __name__ == "__main__":
     if os.environ.get("RENDER_EXTERNAL_URL"):
         Thread(target=_keep_alive, daemon=True).start()
