@@ -22,25 +22,25 @@
     }
   </script>
 
-  <!-- html5-qrcode para escaneo de códigos de barras -->
+  <!-- html5-qrcode para escaneo de cÃ³digos de barras -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
-    /* ── Fuente base ── */
+    /* ââ Fuente base ââ */
     * { -webkit-tap-highlight-color: transparent; }
     body { font-family: 'Inter', system-ui, sans-serif; background: #f1f5f9; }
 
-    /* ── Pantallas ── */
+    /* ââ Pantallas ââ */
     .screen { display: none; }
     .screen.active { display: block; }
 
-    /* ── Header SVG logo ── */
+    /* ââ Header SVG logo ââ */
     .logo-svg { height: 52px; width: auto; flex-shrink: 0; }
 
-    /* ── Tasa BCV pill ── */
+    /* ââ Tasa BCV pill ââ */
     .tasa-pill { background: #5989ff; border-radius: 8px; padding: 4px 10px; text-align: right; flex-shrink: 0; }
 
-    /* ── Tabla carrito ── */
+    /* ââ Tabla carrito ââ */
     .cart-table { width: 100%; border-collapse: collapse; min-width: 460px; }
     .cart-table th { padding: 7px 8px; font-size: 9px; font-weight: 700; color: #64748b;
       text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid #e2e8f0;
@@ -57,7 +57,7 @@
     .qty-inp::-webkit-inner-spin-button,
     .qty-inp::-webkit-outer-spin-button { -webkit-appearance: none; }
 
-    /* ── Dropdown búsqueda ── */
+    /* ââ Dropdown bÃºsqueda ââ */
     .dd-panel { display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px);
       background: #fff; border: .5px solid #e2e8f0; border-radius: 10px; z-index: 50;
       box-shadow: 0 4px 14px rgba(0,0,0,.1); overflow: hidden; }
@@ -67,26 +67,26 @@
     .dd-item:last-child { border-bottom: none; }
     .dd-item:hover { background: #f8fafc; }
 
-    /* ── Imagen producto ── */
+    /* ââ Imagen producto ââ */
     .prod-img { width: 38px; height: 38px; border-radius: 8px; object-fit: cover;
       border: .5px solid #e2e8f0; background: #f1f5f9; flex-shrink: 0; }
     .prod-img-placeholder { width: 38px; height: 38px; border-radius: 8px;
       background: #f1f5f9; border: .5px solid #e2e8f0; display: flex;
       align-items: center; justify-content: center; flex-shrink: 0; }
 
-    /* ── Scanner overlay ── */
+    /* ââ Scanner overlay ââ */
     #scanner-overlay { position: fixed; inset: 0; background: #000; z-index: 100;
       display: none; flex-direction: column; }
     #scanner-overlay.open { display: flex; }
     #reader { flex: 1; }
     #reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
 
-    /* ── Config modal ── */
+    /* ââ Config modal ââ */
     #modal-config { position: fixed; inset: 0; background: rgba(0,0,0,.6);
       z-index: 200; display: flex; align-items: center; justify-content: center; }
     #modal-config.hidden { display: none; }
 
-    /* ── Ficha imagen grande ── */
+    /* ââ Ficha imagen grande ââ */
     .ficha-img { width: 100%; height: 160px; object-fit: contain;
       background: #f1f5f9; border-radius: 12px; border: .5px solid #e2e8f0; }
     .ficha-img-placeholder { width: 100%; height: 160px; background: #f1f5f9;
@@ -94,7 +94,7 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 64px; }
 
-    /* ── Badges ── */
+    /* ââ Badges ââ */
     .badge-e { font-size: 8px; font-weight: 700; color: #10B981;
       background: #10B98115; border: 1px solid #10B98140;
       border-radius: 3px; padding: 1px 4px; }
@@ -102,14 +102,14 @@
       background: #5989ff15; border: 1px solid #5989ff40;
       border-radius: 3px; padding: 1px 4px; }
 
-    /* ── Toast ── */
+    /* ââ Toast ââ */
     #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
       background: #1e293b; color: #fff; font-size: 12px; font-weight: 600;
       padding: 8px 18px; border-radius: 20px; opacity: 0; transition: opacity .25s;
       pointer-events: none; z-index: 300; white-space: nowrap; }
     #toast.show { opacity: 1; }
 
-    /* ── Spinner ── */
+    /* ââ Spinner ââ */
     .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #F2C200;
       border-radius: 50%; width: 20px; height: 20px; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -117,9 +117,9 @@
 </head>
 <body class="min-h-screen">
 
-<!-- ════════════════════════════════════════════════════════════
-     MODAL CONFIG — Se muestra en el primer uso
-═══════════════════════════════════════════════════════════════ -->
+<!-- ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+     MODAL CONFIG â Se muestra en el primer uso
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
 <div id="modal-config" class="hidden">
   <div class="bg-white rounded-2xl shadow-xl w-11/12 max-w-sm p-6">
     <div class="flex items-center gap-3 mb-5">
@@ -129,21 +129,21 @@
           fill="#000" text-anchor="middle" dominant-baseline="middle" font-style="italic">GONDER</text>
         <line x1="10" y1="37" x2="100" y2="37" stroke="#000" stroke-width="1.2"/>
         <text x="54" y="46" font-family="Arial,sans-serif" font-size="5.2" font-weight="700"
-          fill="#000" text-anchor="middle" letter-spacing="0.3">FERRETERÍA • PINTURA • ILUMINACIÓN</text>
+          fill="#000" text-anchor="middle" letter-spacing="0.3">FERRETERÃA â¢ PINTURA â¢ ILUMINACIÃN</text>
       </svg>
       <div>
-        <div class="font-extrabold text-sm text-gray-900">Configuración inicial</div>
+        <div class="font-extrabold text-sm text-gray-900">ConfiguraciÃ³n inicial</div>
         <div class="text-xs text-gray-500">Selecciona las listas de precio</div>
       </div>
     </div>
 
     <div id="config-loading" class="flex items-center gap-3 py-4 text-sm text-gray-500">
-      <div class="spinner"></div> Cargando listas de Odoo…
+      <div class="spinner"></div> Cargando listas de Odooâ¦
     </div>
 
     <div id="config-form" class="hidden space-y-4">
       <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1">Lista USD Estándar</label>
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Lista USD EstÃ¡ndar</label>
         <select id="sel-estandar" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 focus:outline-none focus:border-yellow-400"></select>
       </div>
       <div>
@@ -153,7 +153,7 @@
       <div id="config-error" class="hidden text-xs text-red-600 bg-red-50 rounded-lg p-3"></div>
       <button onclick="GonderApp.guardarConfig()"
         class="w-full bg-black text-yellow-400 font-extrabold text-sm py-3 rounded-xl">
-        Guardar y continuar →
+        Guardar y continuar â
       </button>
     </div>
 
@@ -161,24 +161,24 @@
   </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
+<!-- ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
      SCANNER OVERLAY
-═══════════════════════════════════════════════════════════════ -->
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
 <div id="scanner-overlay">
   <div class="flex items-center justify-between px-4 py-3 bg-black">
-    <span class="text-yellow-400 font-bold text-sm">📷 Escanear código de barras</span>
+    <span class="text-yellow-400 font-bold text-sm">ð· Escanear cÃ³digo de barras</span>
     <button onclick="GonderApp.cerrarScanner()"
-      class="text-white text-xs bg-gray-800 px-3 py-1.5 rounded-lg">✕ Cerrar</button>
+      class="text-white text-xs bg-gray-800 px-3 py-1.5 rounded-lg">â Cerrar</button>
   </div>
   <div id="reader" class="flex-1"></div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
+<!-- ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
      APP PRINCIPAL
-═══════════════════════════════════════════════════════════════ -->
+âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
 <div id="app" class="hidden max-w-md mx-auto min-h-screen flex flex-col">
 
-  <!-- ── HEADER ── -->
+  <!-- ââ HEADER ââ -->
   <header class="bg-yellow-400 px-3 py-2 flex items-center gap-3 sticky top-0 z-40">
     <svg class="logo-svg" viewBox="0 0 110 52" xmlns="http://www.w3.org/2000/svg">
       <rect x="1.5" y="1.5" width="107" height="49" fill="#F2C200" stroke="#000" stroke-width="3" rx="2"/>
@@ -186,7 +186,7 @@
         fill="#000" text-anchor="middle" dominant-baseline="middle" font-style="italic" letter-spacing="-0.5">GONDER</text>
       <line x1="10" y1="37" x2="100" y2="37" stroke="#000" stroke-width="1.2"/>
       <text x="54" y="46" font-family="Arial,sans-serif" font-size="5.2" font-weight="700"
-        fill="#000" text-anchor="middle" letter-spacing="0.3">FERRETERÍA • PINTURA • ILUMINACIÓN</text>
+        fill="#000" text-anchor="middle" letter-spacing="0.3">FERRETERÃA â¢ PINTURA â¢ ILUMINACIÃN</text>
     </svg>
     <div class="flex-1 min-w-0">
       <div class="font-extrabold text-xs text-black leading-tight">Cotizador GONDER</div>
@@ -194,9 +194,9 @@
     </div>
     <div class="tasa-pill">
       <div class="text-[8px] text-blue-200 uppercase tracking-wide">BCV Hoy</div>
-      <div class="text-sm font-bold text-white" id="hdr-tasa">Bs. —</div>
+      <div class="text-sm font-bold text-white" id="hdr-tasa">Bs. â</div>
     </div>
-    <button onclick="GonderApp.mostrarConfig()" title="Configuración"
+    <button onclick="GonderApp.mostrarConfig()" title="ConfiguraciÃ³n"
       class="ml-1 text-black opacity-60 hover:opacity-100">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -206,31 +206,31 @@
     </button>
   </header>
 
-  <!-- ════ PANTALLA: COTIZADOR (MAIN) ════ -->
+  <!-- ââââ PANTALLA: COTIZADOR (MAIN) ââââ -->
   <div id="scr-main" class="screen active flex-1 overflow-y-auto p-3 space-y-3">
 
     <!-- Vendedor -->
     <div class="bg-white rounded-xl border border-gray-100 p-3">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">👤 Vendedor</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">ð¤ Vendedor</div>
       <input id="inp-vendedor" type="text" placeholder="Nombre del vendedor"
         class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-yellow-400"/>
     </div>
 
     <!-- Cliente -->
     <div class="bg-white rounded-xl border border-gray-100 p-3">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">🏪 Cliente</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">ðª Cliente</div>
       <div class="grid grid-cols-2 gap-2 mb-2">
         <div>
           <label class="block text-[10px] font-semibold text-gray-500 mb-1">Nombre</label>
           <div class="relative">
-            <input id="inp-cliente-nombre" type="text" placeholder="Buscar cliente…" autocomplete="off"
+            <input id="inp-cliente-nombre" type="text" placeholder="Buscar clienteâ¦" autocomplete="off"
               oninput="GonderApp.buscarCliente(this.value)"
               class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-yellow-400"/>
             <div id="dd-cliente" class="dd-panel"></div>
           </div>
         </div>
         <div>
-          <label class="block text-[10px] font-semibold text-gray-500 mb-1">Cédula / RIF</label>
+          <label class="block text-[10px] font-semibold text-gray-500 mb-1">CÃ©dula / RIF</label>
           <input id="inp-cliente-cedula" type="text" placeholder="V-00.000.000"
             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-yellow-400"/>
         </div>
@@ -240,23 +240,23 @@
 
     <!-- Buscar producto -->
     <div class="bg-white rounded-xl border border-gray-100 p-3">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">🔍 Buscar producto</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">ð Buscar producto</div>
       <div class="flex gap-2">
         <div class="relative flex-1">
-          <input id="inp-buscar" type="text" placeholder="Código o nombre…" autocomplete="off"
+          <input id="inp-buscar" type="text" placeholder="CÃ³digo o nombreâ¦" autocomplete="off"
             oninput="GonderApp.buscarProducto(this.value)"
             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-yellow-400"/>
           <div id="dd-productos" class="dd-panel"></div>
         </div>
         <button onclick="GonderApp.abrirScanner('cart')"
           class="bg-black text-yellow-400 font-bold text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
-          📷 Escanear
+          ð· Escanear
         </button>
       </div>
-      <!-- Botón Catálogo -->
+      <!-- BotÃ³n CatÃ¡logo -->
       <button onclick="GonderApp.goTo('scr-catalogo')"
         class="mt-2 w-full bg-yellow-400 border-2 border-black text-black font-extrabold text-sm py-2.5 rounded-xl flex items-center justify-center gap-2">
-        📚 Catálogo
+        ð CatÃ¡logo
       </button>
     </div>
 
@@ -266,9 +266,9 @@
         <table class="cart-table">
           <thead>
             <tr>
-              <th>Cód.</th>
+              <th>CÃ³d.</th>
               <th class="c">Img.</th>
-              <th>Descripción</th>
+              <th>DescripciÃ³n</th>
               <th class="c">Cant.</th>
               <th class="r"><span class="badge-e">USD</span></th>
               <th class="r"><span class="badge-b">BCV</span>/Bs.</th>
@@ -278,7 +278,7 @@
           <tbody id="tbody-carrito">
             <tr>
               <td colspan="7" class="text-center py-8 text-gray-400 text-xs">
-                Agrega productos desde el buscador o el catálogo
+                Agrega productos desde el buscador o el catÃ¡logo
               </td>
             </tr>
           </tbody>
@@ -301,18 +301,17 @@
           <span id="tot-bs" class="font-bold text-base text-blue-800">Bs. 0,00</span>
         </div>
 
-        <!-- Botones de acción -->
+        <!-- Botones de acciÃ³n -->
         <div class="grid grid-cols-2 gap-2">
           <button onclick="GonderApp.confirmarPedido()"
             class="bg-black text-yellow-400 font-extrabold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5">
-            ✉️ Enviar a Odoo
+            âï¸ Enviar a Odoo
           </button>
           <button onclick="GonderApp.enviarWhatsApp()"
             class="bg-white border-2 border-green-400 text-green-700 font-extrabold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5">
             <svg width="18" height="18" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
               <circle cx="16" cy="16" r="16" fill="#25D366"/>
               <path d="M22.5 9.5A9.1 9.1 0 0016 7a9 9 0 00-7.8 13.5L7 25l4.6-1.2A9 9 0 0025 16a9 9 0 00-2.5-6.5z" fill="#fff"/>
-              <path d="M20.5 18.3c-.3-.1-1.7-.8
               <path d="M20.5 18.3c-.3-.1-1.7-.8-2-.9s-.5-.1-.7.1-.8 1-.9 1.1-.4.1-.6 0a7.9 7.9 0 01-3.9-3.4c-.3-.5.3-.5.9-1.6.1-.2 0-.4-.1-.5s-.7-1.7-.9-2.3-.5-.5-.7-.5h-.6a1.1 1.1 0 00-.8.4 3.4 3.4 0 00-1.1 2.6 6 6 0 001.2 3.1c.1.2 1.8 2.8 4.4 3.8a5 5 0 003.3.3c.7-.2 1.5-.7 1.7-1.4a2.1 2.1 0 00.1-1.3z" fill="#25D366"/>
             </svg>
             WhatsApp
@@ -322,34 +321,34 @@
         <!-- Nuevo pedido -->
         <button onclick="GonderApp.nuevoPedido()"
           class="mt-2 w-full bg-gray-100 text-gray-600 font-bold text-xs py-2.5 rounded-xl">
-          🔄 Nuevo pedido
+          ð Nuevo pedido
         </button>
       </div>
     </div>
 
   </div><!-- /scr-main -->
 
-  <!-- ════ PANTALLA: CATÁLOGO ════ -->
+  <!-- ââââ PANTALLA: CATÃLOGO ââââ -->
   <div id="scr-catalogo" class="screen flex-1 flex flex-col overflow-hidden">
     <div class="flex items-center gap-2 px-3 py-2 bg-white border-b border-gray-100 sticky top-0 z-10">
       <button onclick="GonderApp.goTo('scr-main')"
-        class="text-gray-500 font-bold text-sm px-2">‹</button>
+        class="text-gray-500 font-bold text-sm px-2">â¹</button>
       <div class="relative flex-1">
-        <input id="inp-catalogo" type="text" placeholder="Buscar en catálogo…"
+        <input id="inp-catalogo" type="text" placeholder="Buscar en catÃ¡logoâ¦"
           oninput="GonderApp.filtrarCatalogo(this.value)"
           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:border-yellow-400"/>
       </div>
       <button onclick="GonderApp.abrirScanner('catalog')"
-        class="bg-black text-yellow-400 font-bold text-xs px-3 py-2 rounded-lg">📷</button>
+        class="bg-black text-yellow-400 font-bold text-xs px-3 py-2 rounded-lg">ð·</button>
     </div>
     <div id="cat-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
   </div>
 
-  <!-- ════ PANTALLA: FICHA ════ -->
+  <!-- ââââ PANTALLA: FICHA ââââ -->
   <div id="scr-ficha" class="screen flex-1 flex flex-col overflow-hidden">
     <div class="flex items-center gap-2 px-3 py-2 bg-white border-b border-gray-100 sticky top-0 z-10">
       <button onclick="GonderApp.goTo('scr-catalogo')"
-        class="text-gray-500 font-bold text-sm px-2">‹</button>
+        class="text-gray-500 font-bold text-sm px-2">â¹</button>
       <span id="ficha-cod" class="text-xs font-mono text-gray-500 flex-1"></span>
       <button onclick="GonderApp.agregarDesdeFicha()"
         class="bg-yellow-400 border-2 border-black text-black font-extrabold text-xs px-4 py-2 rounded-xl">
@@ -361,8 +360,8 @@
 
 </div><!-- /#app -->
 
+<div id="toast"></div>
+
 <script src="/static/js/app.js"></script>
 </body>
 </html>
-')"
-        class="text-xs font-bold text-gray-700 flex items-cent
